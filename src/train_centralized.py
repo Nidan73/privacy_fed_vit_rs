@@ -518,6 +518,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     test_weighted_f1 = test_metrics["weighted_f1"] if test_metrics else None
     metrics_payload = {
         "experiment_id": config.get("experiment_id", "centralized_cli"),
+        "base_experiment_id": config.get("base_experiment_id"),
+        "output_suffix": config.get("output_suffix"),
         "dry_run": dry_run,
         "model_name": config["model_name"],
         "dataset": config["dataset"],
@@ -531,6 +533,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "batch_size": int(config["batch_size"]),
         "learning_rate": float(config["learning_rate"]),
         "weight_decay": float(config["weight_decay"]),
+        "seed": int(config["seed"]),
         "best_epoch": best_epoch,
         "best_val_accuracy": best_val_accuracy,
         "final_train_accuracy": final_epoch["train_accuracy"],

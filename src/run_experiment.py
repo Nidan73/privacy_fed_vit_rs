@@ -17,6 +17,7 @@ OVERRIDE_FIELDS = {
     "batch_size": "batch_size",
     "lr": "learning_rate",
     "weight_decay": "weight_decay",
+    "seed": "seed",
 }
 
 
@@ -152,6 +153,7 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, help="Override configured batch size.")
     parser.add_argument("--lr", type=float, help="Override configured learning rate.")
     parser.add_argument("--weight_decay", type=float, help="Override configured weight decay.")
+    parser.add_argument("--seed", type=int, help="Override configured random seed.")
     parser.add_argument(
         "--output_suffix",
         help="Append a suffix to experiment outputs, for example --output_suffix 10ep.",

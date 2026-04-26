@@ -704,6 +704,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     test_weighted_f1 = test_metrics["weighted_f1"] if test_metrics else None
     metrics_payload = {
         "experiment_id": experiment_id,
+        "base_experiment_id": config.get("base_experiment_id"),
+        "output_suffix": config.get("output_suffix"),
         "dry_run": dry_run,
         "privacy": privacy,
         "global_rounds": int(config.get("global_rounds", config.get("epochs", 5))),
@@ -728,6 +730,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "batch_size": batch_size,
         "learning_rate": learning_rate,
         "weight_decay": weight_decay,
+        "seed": int(config["seed"]),
         "selected_ckks_keys": selected_ckks_keys,
         "selected_ckks_num_parameters": selected_ckks_num_parameters,
         "ckks_poly_modulus_degree": ckks_poly_modulus_degree if privacy == "selected_layer_ckks" else None,

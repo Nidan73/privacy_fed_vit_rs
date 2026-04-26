@@ -135,6 +135,26 @@ Dry-run A3 before any full experiment:
 python src/run_experiment.py --experiment_id A3_fedavg_ckks_iid_vit_base --dry_run
 ```
 
+## Seed Stability Check
+
+UCMerced has a small test set, so repeated runs with different seeds should be summarized before final reporting. Use `--output_suffix` for every repeat so existing results are not overwritten.
+
+Example repeat commands:
+
+```bash
+python src/run_experiment.py --experiment_id A0_centralized_vit_base --epochs 10 --seed 123 --output_suffix 10ep_s123
+python src/run_experiment.py --experiment_id A1_fedavg_iid_vit_base --global_rounds 10 --local_epochs 1 --seed 123 --output_suffix 10r1e_s123
+python src/run_experiment.py --experiment_id A2_fedavg_noniid_vit_base --global_rounds 10 --local_epochs 1 --seed 123 --output_suffix 10r1e_s123
+python src/run_experiment.py --experiment_id A3_fedavg_ckks_iid_vit_base --global_rounds 10 --local_epochs 1 --seed 123 --output_suffix 10r1e_chunked_s123
+```
+
+Aggregate completed run metrics:
+
+```bash
+python src/aggregate_results.py
+python src/compare_experiments.py
+```
+
 ## Data Leakage Sanity Check
 
 Run the split and client partition sanity checker before moving to new ablations:

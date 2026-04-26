@@ -84,6 +84,19 @@ python src/run_experiment.py --experiment_id A0_centralized_vit_base --epochs 10
 
 Use `--output_suffix` when changing experiment settings so previous results are not overwritten. Final test metrics are evaluated using the best validation checkpoint, not the last epoch.
 
+Checkpoint behavior:
+
+- `best.pt` stores the model with the best validation accuracy.
+- `last.pt` stores the latest epoch state for recovery, including optimizer state and AMP scaler state when AMP is enabled.
+- Checkpoints are ignored by Git.
+- Use `--resume_from` to continue an interrupted centralized run.
+
+Example resume command:
+
+```bash
+python src/run_experiment.py --experiment_id A0_centralized_vit_base --epochs 10 --output_suffix 10ep_resume --resume_from experiments/centralized/A0_centralized_vit_base_10ep/checkpoints/last.pt
+```
+
 Recommended order:
 
 1. Validate centralized ViT-Base first.

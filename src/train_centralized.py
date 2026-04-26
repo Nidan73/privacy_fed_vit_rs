@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -193,7 +194,8 @@ def artifact_paths(config: dict[str, Any], dry_run: bool) -> dict[str, Path]:
 
     return {
         "output_dir": output_dir,
-        "checkpoint_path": output_dir / "checkpoints" / "best.pt",
+        "best_checkpoint_path": output_dir / "checkpoints" / "best.pt",
+        "last_checkpoint_path": output_dir / "checkpoints" / "last.pt",
         "metrics_path": metrics_path,
         "log_path": log_path,
     }
@@ -213,23 +215,49 @@ def save_json(payload: dict[str, Any], path: Path) -> None:
         json.dump(payload, file, indent=2)
 
 
-def save_checkpoint(
+def save_best_checkpoint(
     model: nn.Module,
     config: dict[str, Any],
     checkpoint_path: Path,
     epoch: int,
-    val_metrics: dict[str, float],
+    best_val_accuracy: float,
 ) -> None:
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(
         {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
-            "val_metrics": val_metrics,
+            "best_val_accuracy": best_val_accuracy,
+            "best_epoch": epoch,
             "config": config,
         },
         checkpoint_path,
     )
+
+
+def save_last_checkpoint(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: Any,
+    config: dict[str, Any],
+    checkpoint_path: Path,
+    epoch: int,
+    best_val_accuracy: float,
+    best_epoch: int,
+    amp_enabled: bool,
+) -> None:
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = {
+        "epoch": epoch,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "best_val_accuracy": best_val_accuracy,
+        "best_epoch": best_epoch,
+        "config": config,
+    }
+    if amp_enabled:
+        checkpoint["scaler_state_dict"] = scaler.state_dict()
+    torch.save(checkpoint, checkpoint_path)
 
 
 def load_checkpoint(checkpoint_path: Path, device: torch.device) -> dict[str, Any]:
@@ -237,6 +265,72 @@ def load_checkpoint(checkpoint_path: Path, device: torch.device) -> dict[str, An
         return torch.load(checkpoint_path, map_location=device, weights_only=False)
     except TypeError:
         return torch.load(checkpoint_path, map_location=device)
+
+
+def checkpoint_best_accuracy(checkpoint: dict[str, Any]) -> float:
+    if "best_val_accuracy" in checkpoint:
+        return float(checkpoint["best_val_accuracy"])
+    if "val_metrics" in checkpoint and checkpoint["val_metrics"] is not None:
+        return float(checkpoint["val_metrics"].get("accuracy", -1.0))
+    return -1.0
+
+
+def checkpoint_best_epoch(checkpoint: dict[str, Any]) -> int:
+    if "best_epoch" in checkpoint:
+        return int(checkpoint["best_epoch"])
+    return int(checkpoint.get("epoch", 0))
+
+
+def resume_training_state(
+    config: dict[str, Any],
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scaler: Any,
+    device: torch.device,
+    amp_enabled: bool,
+    best_checkpoint_path: Path,
+) -> tuple[int, float, int]:
+    resume_path_value = config.get("resume_from")
+    if not resume_path_value:
+        return 1, -1.0, 0
+
+    resume_path = resolve_path(resume_path_value)
+    if not resume_path.exists():
+        raise FileNotFoundError(f"Resume checkpoint not found: {resume_path}")
+
+    checkpoint = load_checkpoint(resume_path, device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    if "optimizer_state_dict" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        print("Loaded optimizer state from resume checkpoint.")
+    else:
+        print("Resume checkpoint has no optimizer state; optimizer starts fresh.")
+
+    if amp_enabled and "scaler_state_dict" in checkpoint:
+        scaler.load_state_dict(checkpoint["scaler_state_dict"])
+        print("Loaded AMP scaler state from resume checkpoint.")
+    elif amp_enabled:
+        print("Resume checkpoint has no AMP scaler state; scaler starts fresh.")
+
+    checkpoint_epoch = int(checkpoint.get("epoch", 0))
+    best_val_accuracy = checkpoint_best_accuracy(checkpoint)
+    best_epoch = checkpoint_best_epoch(checkpoint)
+
+    sibling_best = resume_path.parent / "best.pt"
+    if sibling_best.exists() and sibling_best.resolve() != best_checkpoint_path.resolve():
+        best_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sibling_best, best_checkpoint_path)
+        print(f"Copied existing best checkpoint into current output: {best_checkpoint_path}")
+
+    print("\nResumed Training")
+    print("================")
+    print(f"resume_from: {resume_path}")
+    print(f"checkpoint_epoch: {checkpoint_epoch}")
+    print(f"next_epoch: {checkpoint_epoch + 1}")
+    print(f"best_epoch: {best_epoch}")
+    print(f"best_val_accuracy: {best_val_accuracy:.4f}")
+    return checkpoint_epoch + 1, best_val_accuracy, best_epoch
 
 
 def print_epoch_summary(
@@ -310,12 +404,25 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     num_epochs = 1 if dry_run else int(config["epochs"])
     max_train_batches = 2 if dry_run else None
     max_val_batches = 2 if dry_run else None
-    best_val_accuracy = -1.0
-    best_epoch = 0
+    start_epoch, best_val_accuracy, best_epoch = resume_training_state(
+        config=config,
+        model=model,
+        optimizer=optimizer,
+        scaler=scaler,
+        device=device,
+        amp_enabled=amp_enabled,
+        best_checkpoint_path=paths["best_checkpoint_path"],
+    )
+    if start_epoch > num_epochs:
+        raise ValueError(
+            f"Resume checkpoint is already at epoch {start_epoch - 1}, "
+            f"but requested epochs={num_epochs}. Increase --epochs to continue."
+        )
+
     epoch_rows: list[dict[str, Any]] = []
     training_start = time.perf_counter()
 
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(start_epoch, num_epochs + 1):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
@@ -365,7 +472,25 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         if val_metrics["accuracy"] > best_val_accuracy:
             best_val_accuracy = val_metrics["accuracy"]
             best_epoch = epoch
-            save_checkpoint(model, config, paths["checkpoint_path"], epoch, val_metrics)
+            save_best_checkpoint(
+                model=model,
+                config=config,
+                checkpoint_path=paths["best_checkpoint_path"],
+                epoch=epoch,
+                best_val_accuracy=best_val_accuracy,
+            )
+
+        save_last_checkpoint(
+            model=model,
+            optimizer=optimizer,
+            scaler=scaler,
+            config=config,
+            checkpoint_path=paths["last_checkpoint_path"],
+            epoch=epoch,
+            best_val_accuracy=best_val_accuracy,
+            best_epoch=best_epoch,
+            amp_enabled=amp_enabled,
+        )
 
     training_time = time.perf_counter() - training_start
     test_metrics: dict[str, float] | None = None
@@ -373,9 +498,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     if dry_run:
         print("Dry-run mode: test evaluation skipped.")
     else:
-        checkpoint = load_checkpoint(paths["checkpoint_path"], device)
+        checkpoint = load_checkpoint(paths["best_checkpoint_path"], device)
         model.load_state_dict(checkpoint["model_state_dict"])
-        print(f"Loaded best validation checkpoint for test evaluation: {paths['checkpoint_path']}")
+        print(f"Loaded best validation checkpoint for test evaluation: {paths['best_checkpoint_path']}")
         test_metrics = evaluate(
             model=model,
             loader=test_loader,
@@ -416,7 +541,10 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "total_training_time_seconds": training_time,
         "training_time_sec": training_time,
         "epoch_log_path": str(paths["log_path"]),
-        "checkpoint_path": str(paths["checkpoint_path"]),
+        "checkpoint_path": str(paths["best_checkpoint_path"]),
+        "best_checkpoint_path": str(paths["best_checkpoint_path"]),
+        "last_checkpoint_path": str(paths["last_checkpoint_path"]),
+        "resume_from": config.get("resume_from"),
         "test_metrics": test_metrics,
     }
     save_json(metrics_payload, paths["metrics_path"])
@@ -433,7 +561,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     )
     print(f"metrics_path: {paths['metrics_path']}")
     print(f"epoch_log_path: {paths['log_path']}")
-    print(f"checkpoint_path: {paths['checkpoint_path']}")
+    print(f"checkpoint_path: {paths['best_checkpoint_path']}")
+    print(f"last_checkpoint_path: {paths['last_checkpoint_path']}")
 
     return metrics_payload
 
@@ -455,6 +584,7 @@ def cli_config(args: argparse.Namespace) -> dict[str, Any]:
         "seed": args.seed,
         "output_dir": args.output_dir,
         "metrics_path": args.metrics_path,
+        "resume_from": args.resume_from,
     }
 
 
@@ -474,6 +604,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_dir", default="experiments/centralized/centralized_cli")
     parser.add_argument("--metrics_path", default="results/metrics/centralized_cli_metrics.json")
+    parser.add_argument("--resume_from", help="Resume from a centralized training checkpoint.")
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--no_train", action="store_true")
     args = parser.parse_args()

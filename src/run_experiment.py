@@ -72,6 +72,9 @@ def apply_overrides(config: dict[str, Any], args: argparse.Namespace) -> dict[st
     if args.output_suffix:
         updated = with_output_suffix(updated, args.output_suffix)
 
+    if args.resume_from:
+        updated["resume_from"] = args.resume_from
+
     if changed_fields:
         print("\nApplied Overrides")
         print("=================")
@@ -81,17 +84,21 @@ def apply_overrides(config: dict[str, Any], args: argparse.Namespace) -> dict[st
         print(f"output_dir: {updated['output_dir']}")
         print(f"metrics_path: {updated['metrics_path']}")
 
+    if args.resume_from:
+        print(f"resume_from: {args.resume_from}")
+
     return updated
 
 
 def guard_existing_outputs(config: dict[str, Any], dry_run: bool, no_train: bool) -> None:
-    if dry_run or no_train:
+    if dry_run or no_train or config.get("resume_from"):
         return
 
     experiment_id = config["experiment_id"]
     possible_outputs = [
         resolve_path(config["metrics_path"]),
         resolve_path(config["output_dir"]) / "checkpoints" / "best.pt",
+        resolve_path(config["output_dir"]) / "checkpoints" / "last.pt",
         resolve_path("results") / "logs" / f"{experiment_id}_epoch_log.csv",
     ]
     existing_outputs = [path for path in possible_outputs if path.exists()]
@@ -145,6 +152,7 @@ def main() -> None:
         "--output_suffix",
         help="Append a suffix to experiment outputs, for example --output_suffix 10ep.",
     )
+    parser.add_argument("--resume_from", help="Resume centralized training from a checkpoint.")
     parser.add_argument("--dry_run", action="store_true", help="Run a tiny pipeline check only.")
     parser.add_argument("--no_train", action="store_true", help="Validate and print config without training.")
     args = parser.parse_args()

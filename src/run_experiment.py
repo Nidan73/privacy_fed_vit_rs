@@ -129,7 +129,7 @@ def run_experiment(config: dict[str, Any], dry_run: bool = False, no_train: bool
 
         return run_training(config, dry_run=dry_run)
 
-    if fl_method == "fedavg" and privacy == "none":
+    if fl_method == "fedavg" and privacy in {"none", "selected_layer_ckks"}:
         from train_fedavg import run_training
 
         return run_training(config, dry_run=dry_run)

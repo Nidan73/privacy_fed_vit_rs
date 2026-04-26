@@ -62,7 +62,7 @@ def validate_experiment(config: dict[str, Any]) -> None:
         raise ValueError("experiment_id must not be empty.")
     if config["fl_method"] not in {"none", "fedavg"}:
         raise ValueError(f"Unsupported fl_method: {config['fl_method']}")
-    if config["privacy"] not in {"none", "ckks_secure_aggregation"}:
+    if config["privacy"] not in {"none", "ckks_secure_aggregation", "selected_layer_ckks"}:
         raise ValueError(f"Unsupported privacy setting: {config['privacy']}")
     if config["fl_method"] == "fedavg" and not config.get("client_split_dir"):
         raise ValueError(f"{config['experiment_id']} requires client_split_dir.")

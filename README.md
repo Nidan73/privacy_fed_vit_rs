@@ -121,6 +121,18 @@ python src/test_ckks_aggregation.py --vector_length 1024
 
 This test uses toy client update vectors and TenSEAL CKKS encryption. Full ViT-Base encryption is not attempted yet because it may be computationally expensive.
 
+## A3 Selected-Layer CKKS FedAvg
+
+A3 uses selected-layer CKKS secure aggregation. Only classifier head parameters, such as `head.weight` and `head.bias`, are CKKS-encrypted during aggregation. The remaining ViT-Base parameters use normal plaintext FedAvg.
+
+This is the practical first privacy-aware setting for this project. Full-model CKKS is not attempted yet because ViT-Base has about 85.8M parameters and full encryption may be too slow and memory-heavy.
+
+Dry-run A3 before any full experiment:
+
+```bash
+python src/run_experiment.py --experiment_id A3_fedavg_ckks_iid_vit_base --dry_run
+```
+
 ## Data Leakage Sanity Check
 
 Run the split and client partition sanity checker before moving to new ablations:

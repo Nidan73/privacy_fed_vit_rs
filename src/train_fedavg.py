@@ -17,6 +17,12 @@ from tqdm import tqdm
 
 from dataset import RemoteSensingCSVDataset
 from model import get_model
+from secure_aggregation_ckks import (
+    create_ckks_context,
+    get_classification_head_keys,
+    mixed_plaintext_ckks_fedavg,
+    plaintext_aggregate_state_dicts,
+)
 from utils import resolve_path, set_seed
 
 
@@ -232,26 +238,7 @@ def aggregate_state_dicts(
     client_states: list[dict[str, torch.Tensor]],
     client_sample_counts: list[int],
 ) -> dict[str, torch.Tensor]:
-    if not client_states:
-        raise ValueError("No client states were provided for FedAvg aggregation.")
-
-    total_samples = sum(client_sample_counts)
-    if total_samples <= 0:
-        raise ValueError("Total client sample count must be positive.")
-
-    aggregated: dict[str, torch.Tensor] = {}
-    first_state = client_states[0]
-
-    for key, first_tensor in first_state.items():
-        if torch.is_floating_point(first_tensor):
-            weighted_sum = torch.zeros_like(first_tensor)
-            for state, sample_count in zip(client_states, client_sample_counts):
-                weighted_sum += state[key] * (sample_count / total_samples)
-            aggregated[key] = weighted_sum
-        else:
-            aggregated[key] = first_tensor.clone()
-
-    return aggregated
+    return plaintext_aggregate_state_dicts(client_states, client_sample_counts)
 
 
 def artifact_paths(config: dict[str, Any], dry_run: bool) -> dict[str, Path]:
@@ -426,6 +413,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     num_workers = int(config.get("num_workers", 0))
     learning_rate = float(config["learning_rate"])
     weight_decay = float(config["weight_decay"])
+    privacy = config.get("privacy", "none")
+    if privacy not in {"none", "selected_layer_ckks"}:
+        raise ValueError(f"Unsupported FedAvg privacy mode: {privacy}")
 
     if dry_run:
         print("\nFedAvg dry-run mode: 1 round, 1 local epoch, 2 client batches, 2 validation batches.")
@@ -452,6 +442,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     print(f"client_sample_counts: {client_sample_counts}")
     print(f"global_rounds: {global_rounds}")
     print(f"local_epochs: {local_epochs}")
+    print(f"privacy: {privacy}")
     print(f"device: {device}")
     print(f"cuda_available: {torch.cuda.is_available()}")
     print(f"amp_enabled: {amp_enabled}")
@@ -468,6 +459,33 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     parameter_count = count_parameters(global_model)
     print(f"model_parameter_count: {parameter_count}")
 
+    ckks_context = None
+    selected_ckks_keys: list[str] = []
+    selected_ckks_num_parameters = 0
+    ckks_poly_modulus_degree = int(config.get("ckks_poly_modulus_degree", 8192))
+    ckks_coeff_mod_bit_sizes = config.get("ckks_coeff_mod_bit_sizes", [60, 40, 40, 60])
+    ckks_global_scale_exponent = int(config.get("ckks_global_scale_exponent", 40))
+    ckks_global_scale = float(2 ** ckks_global_scale_exponent)
+
+    if privacy == "selected_layer_ckks":
+        selected_ckks_keys = get_classification_head_keys(global_model.state_dict())
+        if not selected_ckks_keys:
+            raise ValueError("No classifier head keys found for selected-layer CKKS aggregation.")
+        selected_ckks_num_parameters = int(
+            sum(global_model.state_dict()[key].numel() for key in selected_ckks_keys)
+        )
+        ckks_context = create_ckks_context(
+            poly_modulus_degree=ckks_poly_modulus_degree,
+            coeff_mod_bit_sizes=ckks_coeff_mod_bit_sizes,
+            global_scale=ckks_global_scale,
+        )
+        print("selected_layer_ckks: enabled")
+        print(f"selected_ckks_keys: {selected_ckks_keys}")
+        print(f"selected_ckks_num_parameters: {selected_ckks_num_parameters}")
+        print(f"ckks_poly_modulus_degree: {ckks_poly_modulus_degree}")
+        print(f"ckks_coeff_mod_bit_sizes: {ckks_coeff_mod_bit_sizes}")
+        print(f"ckks_global_scale: 2**{ckks_global_scale_exponent}")
+
     paths = artifact_paths(config, dry_run=dry_run)
     start_round, best_val_accuracy, best_round = maybe_resume_global_model(config, global_model, device)
     if start_round > global_rounds:
@@ -480,6 +498,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     max_val_batches = 2 if dry_run else None
     client_rows: list[dict[str, Any]] = []
     round_rows: list[dict[str, Any]] = []
+    ckks_encryption_time_total = 0.0
+    ckks_aggregation_time_total = 0.0
+    ckks_decryption_time_total = 0.0
     training_start = time.perf_counter()
 
     for round_index in range(start_round, global_rounds + 1):
@@ -546,7 +567,25 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        aggregated_state = aggregate_state_dicts(client_states, client_sample_counts)
+        ckks_info: dict[str, Any] = {
+            "ckks_encryption_time": 0.0,
+            "ckks_aggregation_time": 0.0,
+            "ckks_decryption_time": 0.0,
+            "max_absolute_error": None,
+            "mean_absolute_error": None,
+        }
+        if privacy == "selected_layer_ckks":
+            aggregated_state, ckks_info = mixed_plaintext_ckks_fedavg(
+                client_state_dicts=client_states,
+                client_weights=client_sample_counts,
+                selected_keys=selected_ckks_keys,
+                context=ckks_context,
+            )
+            ckks_encryption_time_total += float(ckks_info["ckks_encryption_time"])
+            ckks_aggregation_time_total += float(ckks_info["ckks_aggregation_time"])
+            ckks_decryption_time_total += float(ckks_info["ckks_decryption_time"])
+        else:
+            aggregated_state = aggregate_state_dicts(client_states, client_sample_counts)
         global_model.load_state_dict(aggregated_state)
         del client_states, aggregated_state
 
@@ -568,6 +607,15 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
             f"time={round_time:.1f}s | "
             f"gpu={gpu_text}"
         )
+        if privacy == "selected_layer_ckks":
+            print(
+                f"Round {round_index}/{global_rounds} CKKS | "
+                f"enc={float(ckks_info['ckks_encryption_time']):.4f}s | "
+                f"agg={float(ckks_info['ckks_aggregation_time']):.4f}s | "
+                f"dec={float(ckks_info['ckks_decryption_time']):.4f}s | "
+                f"max_err={ckks_info['max_absolute_error']:.3e} | "
+                f"mean_err={ckks_info['mean_absolute_error']:.3e}"
+            )
 
         round_rows.append(
             {
@@ -576,6 +624,11 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 "val_accuracy": val_metrics["accuracy"],
                 "val_macro_f1": val_metrics["macro_f1"],
                 "val_weighted_f1": val_metrics["weighted_f1"],
+                "ckks_encryption_time": ckks_info["ckks_encryption_time"],
+                "ckks_aggregation_time": ckks_info["ckks_aggregation_time"],
+                "ckks_decryption_time": ckks_info["ckks_decryption_time"],
+                "ckks_max_absolute_error": ckks_info["max_absolute_error"],
+                "ckks_mean_absolute_error": ckks_info["mean_absolute_error"],
                 "round_time_sec": round_time,
                 "gpu_memory_peak_gb": (
                     torch.cuda.max_memory_allocated() / (1024 ** 3)
@@ -639,6 +692,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     metrics_payload = {
         "experiment_id": experiment_id,
         "dry_run": dry_run,
+        "privacy": privacy,
         "global_rounds": int(config.get("global_rounds", config.get("epochs", 5))),
         "actual_global_rounds": global_rounds,
         "local_epochs": local_epochs,
@@ -661,6 +715,17 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "batch_size": batch_size,
         "learning_rate": learning_rate,
         "weight_decay": weight_decay,
+        "selected_ckks_keys": selected_ckks_keys,
+        "selected_ckks_num_parameters": selected_ckks_num_parameters,
+        "ckks_poly_modulus_degree": ckks_poly_modulus_degree if privacy == "selected_layer_ckks" else None,
+        "ckks_coeff_mod_bit_sizes": ckks_coeff_mod_bit_sizes if privacy == "selected_layer_ckks" else None,
+        "ckks_global_scale": ckks_global_scale if privacy == "selected_layer_ckks" else None,
+        "ckks_global_scale_exponent": (
+            ckks_global_scale_exponent if privacy == "selected_layer_ckks" else None
+        ),
+        "ckks_encryption_time_total": ckks_encryption_time_total,
+        "ckks_aggregation_time_total": ckks_aggregation_time_total,
+        "ckks_decryption_time_total": ckks_decryption_time_total,
         "round_log_path": str(paths["round_log_path"]),
         "client_log_path": str(paths["client_log_path"]),
         "checkpoint_path": str(paths["best_checkpoint_path"]),
@@ -686,6 +751,12 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     print(f"client_log_path: {paths['client_log_path']}")
     print(f"checkpoint_path: {paths['best_checkpoint_path']}")
     print(f"last_checkpoint_path: {paths['last_checkpoint_path']}")
+    if privacy == "selected_layer_ckks":
+        print(f"selected_ckks_keys: {selected_ckks_keys}")
+        print(f"selected_ckks_num_parameters: {selected_ckks_num_parameters}")
+        print(f"ckks_encryption_time_total: {ckks_encryption_time_total:.4f}s")
+        print(f"ckks_aggregation_time_total: {ckks_aggregation_time_total:.4f}s")
+        print(f"ckks_decryption_time_total: {ckks_decryption_time_total:.4f}s")
 
     return metrics_payload
 
@@ -702,6 +773,7 @@ def cli_config(args: argparse.Namespace) -> dict[str, Any]:
         "metrics_path": args.metrics_path,
         "model_name": args.model_name,
         "pretrained": args.pretrained,
+        "privacy": args.privacy,
         "num_clients": args.num_clients,
         "global_rounds": args.global_rounds,
         "local_epochs": args.local_epochs,
@@ -726,6 +798,7 @@ def main() -> None:
     parser.add_argument("--metrics_path", default="results/metrics/fedavg_cli_metrics.json")
     parser.add_argument("--model_name", default="vit_base_patch16_224")
     parser.add_argument("--pretrained", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--privacy", choices=["none", "selected_layer_ckks"], default="none")
     parser.add_argument("--num_clients", type=int, default=3)
     parser.add_argument("--global_rounds", type=int, default=5)
     parser.add_argument("--local_epochs", type=int, default=1)

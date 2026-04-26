@@ -53,6 +53,40 @@ def decrypt_vector(encrypted_vector) -> np.ndarray:
     return np.asarray(encrypted_vector.decrypt(), dtype=np.float64)
 
 
+def get_ckks_slot_count(poly_modulus_degree: int) -> int:
+    if poly_modulus_degree <= 0:
+        raise ValueError("poly_modulus_degree must be positive.")
+    return poly_modulus_degree // 2
+
+
+def chunk_vector(vector: Sequence[float] | np.ndarray, chunk_size: int) -> list[np.ndarray]:
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive.")
+    array = np.asarray(vector, dtype=np.float64).reshape(-1)
+    return [
+        array[start : start + chunk_size]
+        for start in range(0, len(array), chunk_size)
+    ]
+
+
+def unchunk_vector(chunks: Sequence[Sequence[float] | np.ndarray]) -> np.ndarray:
+    if not chunks:
+        return np.asarray([], dtype=np.float64)
+    return np.concatenate([np.asarray(chunk, dtype=np.float64).reshape(-1) for chunk in chunks])
+
+
+def encrypt_vector_chunks(
+    vector: Sequence[float] | np.ndarray,
+    context,
+    chunk_size: int,
+) -> list:
+    return [encrypt_vector(chunk, context) for chunk in chunk_vector(vector, chunk_size)]
+
+
+def decrypt_vector_chunks(encrypted_chunks: Sequence) -> np.ndarray:
+    return unchunk_vector([decrypt_vector(encrypted_chunk) for encrypted_chunk in encrypted_chunks])
+
+
 def plaintext_weighted_average(
     vectors: Sequence[Sequence[float] | np.ndarray],
     weights: Sequence[float],
@@ -84,6 +118,66 @@ def ckks_weighted_average(encrypted_vectors: Sequence, weights: Sequence[float])
     for encrypted_vector, weight in zip(encrypted_vectors[1:], weights_array[1:]):
         encrypted_sum += encrypted_vector * float(weight)
     return encrypted_sum
+
+
+def ckks_weighted_average_chunked(
+    client_vectors: Sequence[Sequence[float] | np.ndarray],
+    weights: Sequence[float],
+    context,
+    chunk_size: int,
+    plaintext_avg: Sequence[float] | np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, float | int | None]]:
+    if len(client_vectors) != len(weights):
+        raise ValueError("client_vectors and weights must have the same length.")
+    if not client_vectors:
+        raise ValueError("At least one client vector is required.")
+
+    weights_array = normalize_weights(weights)
+    vector_lengths = [len(np.asarray(vector).reshape(-1)) for vector in client_vectors]
+    if len(set(vector_lengths)) != 1:
+        raise ValueError(f"All client vectors must have the same length. Got: {vector_lengths}")
+
+    encryption_start = time.perf_counter()
+    encrypted_client_chunks = [
+        encrypt_vector_chunks(vector, context, chunk_size)
+        for vector in client_vectors
+    ]
+    encryption_time = time.perf_counter() - encryption_start
+
+    num_chunks = len(encrypted_client_chunks[0])
+    if any(len(chunks) != num_chunks for chunks in encrypted_client_chunks):
+        raise ValueError("All encrypted client vectors must have the same number of chunks.")
+
+    aggregation_start = time.perf_counter()
+    aggregated_encrypted_chunks = []
+    for chunk_index in range(num_chunks):
+        encrypted_chunk_sum = encrypted_client_chunks[0][chunk_index] * float(weights_array[0])
+        for client_chunks, weight in zip(encrypted_client_chunks[1:], weights_array[1:]):
+            encrypted_chunk_sum += client_chunks[chunk_index] * float(weight)
+        aggregated_encrypted_chunks.append(encrypted_chunk_sum)
+    aggregation_time = time.perf_counter() - aggregation_start
+
+    decryption_start = time.perf_counter()
+    aggregated_vector = decrypt_vector_chunks(aggregated_encrypted_chunks)
+    decryption_time = time.perf_counter() - decryption_start
+
+    max_abs_error = None
+    mean_abs_error = None
+    if plaintext_avg is not None:
+        error_metrics = compute_aggregation_error(plaintext_avg, aggregated_vector)
+        max_abs_error = error_metrics["max_absolute_error"]
+        mean_abs_error = error_metrics["mean_absolute_error"]
+
+    info = {
+        "ckks_encryption_time": encryption_time,
+        "ckks_aggregation_time": aggregation_time,
+        "ckks_decryption_time": decryption_time,
+        "max_absolute_error": max_abs_error,
+        "mean_absolute_error": mean_abs_error,
+        "num_chunks": num_chunks,
+        "chunk_size": int(chunk_size),
+    }
+    return aggregated_vector, info
 
 
 def compute_aggregation_error(
@@ -209,6 +303,7 @@ def ckks_aggregate_selected_state_dicts(
     client_weights: Sequence[float],
     selected_keys: Sequence[str],
     context,
+    chunk_size: int,
 ) -> tuple[dict[str, torch.Tensor], dict[str, float | int | list[str]]]:
     if not selected_keys:
         raise ValueError("selected_keys must not be empty for selected-layer CKKS.")
@@ -230,27 +325,25 @@ def ckks_aggregate_selected_state_dicts(
 
     plaintext_avg = plaintext_weighted_average(flat_vectors, weights)
 
-    encryption_start = time.perf_counter()
-    encrypted_vectors = [encrypt_vector(vector, context) for vector in flat_vectors]
-    encryption_time = time.perf_counter() - encryption_start
-
-    aggregation_start = time.perf_counter()
-    encrypted_avg = ckks_weighted_average(encrypted_vectors, weights)
-    aggregation_time = time.perf_counter() - aggregation_start
-
-    decryption_start = time.perf_counter()
-    decrypted_avg = decrypt_vector(encrypted_avg)
-    decryption_time = time.perf_counter() - decryption_start
+    decrypted_avg, chunked_info = ckks_weighted_average_chunked(
+        client_vectors=flat_vectors,
+        weights=weights,
+        context=context,
+        chunk_size=chunk_size,
+        plaintext_avg=plaintext_avg,
+    )
 
     restored_tensors = unflatten_tensors(decrypted_avg, metadata or [])
-    error_metrics = compute_aggregation_error(plaintext_avg, decrypted_avg)
     info = {
         "selected_keys": selected_keys,
         "selected_num_parameters": int(len(flat_vectors[0])),
-        "ckks_encryption_time": encryption_time,
-        "ckks_aggregation_time": aggregation_time,
-        "ckks_decryption_time": decryption_time,
-        **error_metrics,
+        "ckks_encryption_time": chunked_info["ckks_encryption_time"],
+        "ckks_aggregation_time": chunked_info["ckks_aggregation_time"],
+        "ckks_decryption_time": chunked_info["ckks_decryption_time"],
+        "max_absolute_error": chunked_info["max_absolute_error"],
+        "mean_absolute_error": chunked_info["mean_absolute_error"],
+        "ckks_num_chunks": int(chunked_info["num_chunks"]),
+        "ckks_chunk_size": int(chunked_info["chunk_size"]),
     }
     return restored_tensors, info
 
@@ -260,6 +353,7 @@ def mixed_plaintext_ckks_fedavg(
     client_weights: Sequence[float],
     selected_keys: Sequence[str],
     context,
+    chunk_size: int,
 ) -> tuple[dict[str, torch.Tensor], dict[str, float | int | list[str]]]:
     aggregated = plaintext_aggregate_state_dicts(client_state_dicts, client_weights)
     selected_tensors, ckks_info = ckks_aggregate_selected_state_dicts(
@@ -267,6 +361,7 @@ def mixed_plaintext_ckks_fedavg(
         client_weights=client_weights,
         selected_keys=selected_keys,
         context=context,
+        chunk_size=chunk_size,
     )
     aggregated.update(selected_tensors)
     return aggregated, ckks_info

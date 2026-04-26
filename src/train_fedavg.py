@@ -20,6 +20,7 @@ from model import get_model
 from secure_aggregation_ckks import (
     create_ckks_context,
     get_classification_head_keys,
+    get_ckks_slot_count,
     mixed_plaintext_ckks_fedavg,
     plaintext_aggregate_state_dicts,
 )
@@ -466,6 +467,10 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     ckks_coeff_mod_bit_sizes = config.get("ckks_coeff_mod_bit_sizes", [60, 40, 40, 60])
     ckks_global_scale_exponent = int(config.get("ckks_global_scale_exponent", 40))
     ckks_global_scale = float(2 ** ckks_global_scale_exponent)
+    ckks_chunk_size = int(
+        config.get("ckks_chunk_size", get_ckks_slot_count(ckks_poly_modulus_degree))
+    )
+    ckks_num_chunks = 0
 
     if privacy == "selected_layer_ckks":
         selected_ckks_keys = get_classification_head_keys(global_model.state_dict())
@@ -485,6 +490,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         print(f"ckks_poly_modulus_degree: {ckks_poly_modulus_degree}")
         print(f"ckks_coeff_mod_bit_sizes: {ckks_coeff_mod_bit_sizes}")
         print(f"ckks_global_scale: 2**{ckks_global_scale_exponent}")
+        print(f"ckks_chunk_size: {ckks_chunk_size}")
 
     paths = artifact_paths(config, dry_run=dry_run)
     start_round, best_val_accuracy, best_round = maybe_resume_global_model(config, global_model, device)
@@ -573,6 +579,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
             "ckks_decryption_time": 0.0,
             "max_absolute_error": None,
             "mean_absolute_error": None,
+            "ckks_num_chunks": 0,
+            "ckks_chunk_size": ckks_chunk_size,
         }
         if privacy == "selected_layer_ckks":
             aggregated_state, ckks_info = mixed_plaintext_ckks_fedavg(
@@ -580,7 +588,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 client_weights=client_sample_counts,
                 selected_keys=selected_ckks_keys,
                 context=ckks_context,
+                chunk_size=ckks_chunk_size,
             )
+            ckks_num_chunks = int(ckks_info["ckks_num_chunks"])
             ckks_encryption_time_total += float(ckks_info["ckks_encryption_time"])
             ckks_aggregation_time_total += float(ckks_info["ckks_aggregation_time"])
             ckks_decryption_time_total += float(ckks_info["ckks_decryption_time"])
@@ -613,6 +623,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 f"enc={float(ckks_info['ckks_encryption_time']):.4f}s | "
                 f"agg={float(ckks_info['ckks_aggregation_time']):.4f}s | "
                 f"dec={float(ckks_info['ckks_decryption_time']):.4f}s | "
+                f"chunks={ckks_info['ckks_num_chunks']}x{ckks_info['ckks_chunk_size']} | "
                 f"max_err={ckks_info['max_absolute_error']:.3e} | "
                 f"mean_err={ckks_info['mean_absolute_error']:.3e}"
             )
@@ -627,6 +638,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 "ckks_encryption_time": ckks_info["ckks_encryption_time"],
                 "ckks_aggregation_time": ckks_info["ckks_aggregation_time"],
                 "ckks_decryption_time": ckks_info["ckks_decryption_time"],
+                "ckks_chunk_size": ckks_info["ckks_chunk_size"],
+                "ckks_num_chunks": ckks_info["ckks_num_chunks"],
                 "ckks_max_absolute_error": ckks_info["max_absolute_error"],
                 "ckks_mean_absolute_error": ckks_info["mean_absolute_error"],
                 "round_time_sec": round_time,
@@ -723,6 +736,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "ckks_global_scale_exponent": (
             ckks_global_scale_exponent if privacy == "selected_layer_ckks" else None
         ),
+        "ckks_chunk_size": ckks_chunk_size if privacy == "selected_layer_ckks" else None,
+        "ckks_num_chunks": ckks_num_chunks if privacy == "selected_layer_ckks" else None,
         "ckks_encryption_time_total": ckks_encryption_time_total,
         "ckks_aggregation_time_total": ckks_aggregation_time_total,
         "ckks_decryption_time_total": ckks_decryption_time_total,
@@ -754,6 +769,8 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     if privacy == "selected_layer_ckks":
         print(f"selected_ckks_keys: {selected_ckks_keys}")
         print(f"selected_ckks_num_parameters: {selected_ckks_num_parameters}")
+        print(f"ckks_chunk_size: {ckks_chunk_size}")
+        print(f"ckks_num_chunks: {ckks_num_chunks}")
         print(f"ckks_encryption_time_total: {ckks_encryption_time_total:.4f}s")
         print(f"ckks_aggregation_time_total: {ckks_aggregation_time_total:.4f}s")
         print(f"ckks_decryption_time_total: {ckks_decryption_time_total:.4f}s")

@@ -125,6 +125,8 @@ This test uses toy client update vectors and TenSEAL CKKS encryption. Full ViT-B
 
 A3 uses selected-layer CKKS secure aggregation. Only classifier head parameters, such as `head.weight` and `head.bias`, are CKKS-encrypted during aggregation. The remaining ViT-Base parameters use normal plaintext FedAvg.
 
+A3 uses manual chunked CKKS aggregation for selected classifier-head parameters. This avoids oversized CKKS vectors and keeps the encrypted aggregation operation limited to weighted addition and decryption.
+
 This is the practical first privacy-aware setting for this project. Full-model CKKS is not attempted yet because ViT-Base has about 85.8M parameters and full encryption may be too slow and memory-heavy.
 
 Dry-run A3 before any full experiment:

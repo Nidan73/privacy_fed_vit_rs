@@ -83,3 +83,13 @@ Recommended order:
 3. Add CKKS secure aggregation third.
 
 Do not run all ablations before each stage is validated.
+
+## GPU Check
+
+Training ViT-Base should be run on a CUDA-capable NVIDIA GPU. Before starting full centralized training, check the active Python and PyTorch CUDA environment:
+
+```bash
+python src/check_gpu.py
+```
+
+If CUDA is reported as false, do not start full training until the PyTorch CUDA installation, NVIDIA driver, and selected Python environment are fixed.

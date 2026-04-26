@@ -111,6 +111,16 @@ python src/run_experiment.py --experiment_id A1_fedavg_iid_vit_base --global_rou
 
 A1 should be run only after A0 centralized training works. A1 uses the IID client split in `data/splits/clients_iid` and does not include CKKS secure aggregation.
 
+## CKKS Toy Aggregation Test
+
+Validate encrypted weighted averaging before connecting CKKS to FedAvg:
+
+```bash
+python src/test_ckks_aggregation.py --vector_length 1024
+```
+
+This test uses toy client update vectors and TenSEAL CKKS encryption. Full ViT-Base encryption is not attempted yet because it may be computationally expensive.
+
 ## Data Leakage Sanity Check
 
 Run the split and client partition sanity checker before moving to new ablations:

@@ -1,0 +1,29 @@
+{
+  "tenseal_available": true,
+  "vector_length": 1024,
+  "num_clients": 3,
+  "sample_counts": [
+    504,
+    483,
+    483
+  ],
+  "weights": [
+    0.34285714285714286,
+    0.32857142857142857,
+    0.32857142857142857
+  ],
+  "poly_modulus_degree": 8192,
+  "coeff_mod_bit_sizes": [
+    60,
+    40,
+    40,
+    60
+  ],
+  "global_scale_exponent": 40,
+  "global_scale": 1099511627776.0,
+  "encryption_time_seconds": 0.010013399994932115,
+  "aggregation_time_seconds": 0.002063399995677173,
+  "decryption_time_seconds": 0.0006373999640345573,
+  "max_absolute_error": 2.4932613335026943e-08,
+  "mean_absolute_error": 5.648584856167494e-09
+}

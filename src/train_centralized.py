@@ -232,6 +232,13 @@ def save_checkpoint(
     )
 
 
+def load_checkpoint(checkpoint_path: Path, device: torch.device) -> dict[str, Any]:
+    try:
+        return torch.load(checkpoint_path, map_location=device, weights_only=False)
+    except TypeError:
+        return torch.load(checkpoint_path, map_location=device)
+
+
 def print_epoch_summary(
     epoch: int,
     train_metrics: dict[str, float],
@@ -366,8 +373,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     if dry_run:
         print("Dry-run mode: test evaluation skipped.")
     else:
-        checkpoint = torch.load(paths["checkpoint_path"], map_location=device)
+        checkpoint = load_checkpoint(paths["checkpoint_path"], device)
         model.load_state_dict(checkpoint["model_state_dict"])
+        print(f"Loaded best validation checkpoint for test evaluation: {paths['checkpoint_path']}")
         test_metrics = evaluate(
             model=model,
             loader=test_loader,
@@ -379,6 +387,10 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
 
     save_epoch_log(epoch_rows, paths["log_path"])
 
+    final_epoch = epoch_rows[-1]
+    test_accuracy = test_metrics["accuracy"] if test_metrics else None
+    test_macro_f1 = test_metrics["macro_f1"] if test_metrics else None
+    test_weighted_f1 = test_metrics["weighted_f1"] if test_metrics else None
     metrics_payload = {
         "experiment_id": config.get("experiment_id", "centralized_cli"),
         "dry_run": dry_run,
@@ -386,10 +398,22 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "dataset": config["dataset"],
         "num_classes": num_classes,
         "model_parameter_count": parameter_count,
+        "device": str(device),
         "cuda_available": torch.cuda.is_available(),
         "amp_enabled": amp_enabled,
+        "epochs": int(config["epochs"]),
+        "actual_epochs_ran": num_epochs,
+        "batch_size": int(config["batch_size"]),
+        "learning_rate": float(config["learning_rate"]),
+        "weight_decay": float(config["weight_decay"]),
         "best_epoch": best_epoch,
         "best_val_accuracy": best_val_accuracy,
+        "final_train_accuracy": final_epoch["train_accuracy"],
+        "final_val_accuracy": final_epoch["val_accuracy"],
+        "test_accuracy": test_accuracy,
+        "test_macro_f1": test_macro_f1,
+        "test_weighted_f1": test_weighted_f1,
+        "total_training_time_seconds": training_time,
         "training_time_sec": training_time,
         "epoch_log_path": str(paths["log_path"]),
         "checkpoint_path": str(paths["checkpoint_path"]),
@@ -400,6 +424,13 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     print("\nCentralized run completed.")
     print(f"best_epoch: {best_epoch}")
     print(f"best_val_accuracy: {best_val_accuracy:.4f}")
+    print(f"test_accuracy: {test_accuracy:.4f}" if test_accuracy is not None else "test_accuracy: n/a")
+    print(f"test_macro_f1: {test_macro_f1:.4f}" if test_macro_f1 is not None else "test_macro_f1: n/a")
+    print(
+        f"test_weighted_f1: {test_weighted_f1:.4f}"
+        if test_weighted_f1 is not None
+        else "test_weighted_f1: n/a"
+    )
     print(f"metrics_path: {paths['metrics_path']}")
     print(f"epoch_log_path: {paths['log_path']}")
     print(f"checkpoint_path: {paths['checkpoint_path']}")

@@ -76,6 +76,14 @@ Run only a tiny centralized dry-run check:
 python src/run_experiment.py --experiment_id A0_centralized_vit_base --dry_run
 ```
 
+Run a 10-epoch centralized debug experiment with a separate output suffix:
+
+```bash
+python src/run_experiment.py --experiment_id A0_centralized_vit_base --epochs 10 --output_suffix 10ep
+```
+
+Use `--output_suffix` when changing experiment settings so previous results are not overwritten. Final test metrics are evaluated using the best validation checkpoint, not the last epoch.
+
 Recommended order:
 
 1. Validate centralized ViT-Base first.

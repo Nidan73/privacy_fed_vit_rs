@@ -111,6 +111,14 @@ python src/run_experiment.py --experiment_id A1_fedavg_iid_vit_base --global_rou
 
 A1 should be run only after A0 centralized training works. A1 uses the IID client split in `data/splits/clients_iid` and does not include CKKS secure aggregation.
 
+## Data Leakage Sanity Check
+
+Run the split and client partition sanity checker before moving to new ablations:
+
+```bash
+python src/sanity_check_splits.py
+```
+
 Recommended order:
 
 1. Validate centralized ViT-Base first.

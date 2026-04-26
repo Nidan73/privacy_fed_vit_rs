@@ -1,0 +1,173 @@
+{
+  "split_csvs_exist": true,
+  "split_row_counts": {
+    "train": 1470,
+    "val": 315,
+    "test": 315
+  },
+  "duplicate_paths_inside_splits": {
+    "train": 0,
+    "val": 0,
+    "test": 0
+  },
+  "overlap_counts": {
+    "train_val": 0,
+    "train_test": 0,
+    "val_test": 0
+  },
+  "all_image_paths_exist": {
+    "train": true,
+    "val": true,
+    "test": true
+  },
+  "missing_image_path_counts": {
+    "train": 0,
+    "val": 0,
+    "test": 0
+  },
+  "label_mapping_consistent": true,
+  "label_mapping": {
+    "0": "agricultural",
+    "1": "airplane",
+    "2": "baseballdiamond",
+    "3": "beach",
+    "4": "buildings",
+    "5": "chaparral",
+    "6": "denseresidential",
+    "7": "forest",
+    "8": "freeway",
+    "9": "golfcourse",
+    "10": "harbor",
+    "11": "intersection",
+    "12": "mediumresidential",
+    "13": "mobilehomepark",
+    "14": "overpass",
+    "15": "parkinglot",
+    "16": "river",
+    "17": "runway",
+    "18": "sparseresidential",
+    "19": "storagetanks",
+    "20": "tenniscourt"
+  },
+  "invalid_labels": {
+    "train": [],
+    "val": [],
+    "test": []
+  },
+  "class_counts": {
+    "train": {
+      "agricultural": 70,
+      "airplane": 70,
+      "baseballdiamond": 70,
+      "beach": 70,
+      "buildings": 70,
+      "chaparral": 70,
+      "denseresidential": 70,
+      "forest": 70,
+      "freeway": 70,
+      "golfcourse": 70,
+      "harbor": 70,
+      "intersection": 70,
+      "mediumresidential": 70,
+      "mobilehomepark": 70,
+      "overpass": 70,
+      "parkinglot": 70,
+      "river": 70,
+      "runway": 70,
+      "sparseresidential": 70,
+      "storagetanks": 70,
+      "tenniscourt": 70
+    },
+    "val": {
+      "agricultural": 15,
+      "airplane": 15,
+      "baseballdiamond": 15,
+      "beach": 15,
+      "buildings": 15,
+      "chaparral": 15,
+      "denseresidential": 15,
+      "forest": 15,
+      "freeway": 15,
+      "golfcourse": 15,
+      "harbor": 15,
+      "intersection": 15,
+      "mediumresidential": 15,
+      "mobilehomepark": 15,
+      "overpass": 15,
+      "parkinglot": 15,
+      "river": 15,
+      "runway": 15,
+      "sparseresidential": 15,
+      "storagetanks": 15,
+      "tenniscourt": 15
+    },
+    "test": {
+      "agricultural": 15,
+      "airplane": 15,
+      "baseballdiamond": 15,
+      "beach": 15,
+      "buildings": 15,
+      "chaparral": 15,
+      "denseresidential": 15,
+      "forest": 15,
+      "freeway": 15,
+      "golfcourse": 15,
+      "harbor": 15,
+      "intersection": 15,
+      "mediumresidential": 15,
+      "mobilehomepark": 15,
+      "overpass": 15,
+      "parkinglot": 15,
+      "river": 15,
+      "runway": 15,
+      "sparseresidential": 15,
+      "storagetanks": 15,
+      "tenniscourt": 15
+    }
+  },
+  "class_count_mismatches": {
+    "train": {},
+    "val": {},
+    "test": {}
+  },
+  "iid_clients": {
+    "sample_counts": {
+      "client_0": 504,
+      "client_1": 483,
+      "client_2": 483
+    },
+    "train_only": true,
+    "no_val_test_images": true,
+    "covers_train_exactly_once": true,
+    "duplicate_paths_across_clients": [],
+    "missing_train_paths_count": 0,
+    "extra_paths_count": 0,
+    "total_client_rows": 1470,
+    "unique_client_paths": 1470
+  },
+  "noniid_clients": {
+    "sample_counts": {
+      "client_0": 490,
+      "client_1": 490,
+      "client_2": 490
+    },
+    "train_only": true,
+    "no_val_test_images": true,
+    "covers_train_exactly_once": true,
+    "duplicate_paths_across_clients": [],
+    "missing_train_paths_count": 0,
+    "extra_paths_count": 0,
+    "total_client_rows": 1470,
+    "unique_client_paths": 1470
+  },
+  "evaluation_config": {
+    "a0_uses_configured_test_csv": true,
+    "a1_uses_configured_test_csv": true,
+    "a1_uses_configured_val_csv": true,
+    "a1_client_training_uses_client_split_dir": true,
+    "a1_config_iid_client_split_dir": true,
+    "a1_no_val_or_test_client_training_source_pattern": true
+  },
+  "warnings": [],
+  "passed": true
+}

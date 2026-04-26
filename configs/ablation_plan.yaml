@@ -45,6 +45,13 @@ experiments:
     model_name: vit_base_patch16_224
     fl_method: fedavg
     privacy: none
+    global_rounds: 5
+    local_epochs: 1
+    batch_size: 16
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-4
+    num_clients: 3
+    num_workers: 0
     client_split_dir: data/splits/clients_noniid
     output_dir: experiments/fedavg_noniid/A2_fedavg_noniid_vit_base
     metrics_path: results/metrics/A2_fedavg_noniid_vit_base_metrics.json

@@ -58,7 +58,7 @@ def apply_overrides(config: dict[str, Any], args: argparse.Namespace) -> dict[st
         if value is None:
             continue
 
-        old_value = updated[config_name]
+        old_value = updated.get(config_name)
         updated[config_name] = value
         if str(old_value) != str(value):
             changed_fields.append(config_name)
@@ -81,7 +81,7 @@ def apply_overrides(config: dict[str, Any], args: argparse.Namespace) -> dict[st
         print("\nApplied Overrides")
         print("=================")
         for field in changed_fields:
-            print(f"{field}: {config[field]} -> {updated[field]}")
+            print(f"{field}: {config.get(field, '<unset>')} -> {updated[field]}")
         print(f"experiment_id: {config['experiment_id']} -> {updated['experiment_id']}")
         print(f"output_dir: {updated['output_dir']}")
         print(f"metrics_path: {updated['metrics_path']}")

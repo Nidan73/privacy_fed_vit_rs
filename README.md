@@ -53,3 +53,33 @@ python src/dataset_check.py --data_dir data/raw/uc_merced
 python src/split_data.py --data_dir data/raw/uc_merced --output_dir data/splits
 python src/client_partition.py --train_csv data/splits/train.csv --num_clients 3 --output_dir data/splits
 ```
+
+## Ablation Plan
+
+Main paper ablations:
+
+- A0: Centralized ViT-Base
+- A1: FedAvg + ViT-Base with IID clients
+- A2: FedAvg + ViT-Base with non-IID clients
+- A3: FedAvg + ViT-Base + CKKS secure aggregation with IID clients
+- A4: FedAvg + ViT-Base + CKKS secure aggregation with non-IID clients
+
+Inspect the configured ablations:
+
+```bash
+python src/experiment_registry.py --config configs/ablation_plan.yaml
+```
+
+Run only a tiny centralized dry-run check:
+
+```bash
+python src/run_experiment.py --experiment_id A0_centralized_vit_base --dry_run
+```
+
+Recommended order:
+
+1. Validate centralized ViT-Base first.
+2. Implement and validate FedAvg second.
+3. Add CKKS secure aggregation third.
+
+Do not run all ablations before each stage is validated.

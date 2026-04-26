@@ -26,6 +26,7 @@ results/figures/*.jpeg
 results/figures/*.pdf
 
 experiments/*/checkpoints/
+experiments/**/checkpoints/
 
 .cache/
 .DS_Store

@@ -3,6 +3,7 @@ torchvision
 transformers
 timm
 datasets
+PyYAML
 numpy
 pandas
 scikit-learn

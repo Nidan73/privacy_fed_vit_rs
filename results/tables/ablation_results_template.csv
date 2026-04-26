@@ -1,0 +1,1 @@
+experiment_id,model,dataset,split_type,fl_method,privacy,num_clients,epochs,accuracy,macro_f1,weighted_f1,training_time,aggregation_time,communication_cost,notes

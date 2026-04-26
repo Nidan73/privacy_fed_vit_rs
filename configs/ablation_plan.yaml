@@ -1,0 +1,66 @@
+defaults:
+  dataset: UCMerced Land Use
+  train_csv: data/splits/train.csv
+  val_csv: data/splits/val.csv
+  test_csv: data/splits/test.csv
+  pretrained: true
+  num_clients: 3
+  epochs: 5
+  batch_size: 16
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-4
+  seed: 42
+
+experiments:
+  A0_centralized_vit_base:
+    experiment_id: A0_centralized_vit_base
+    experiment_name: "A0: Centralized ViT-Base"
+    model_name: vit_base_patch16_224
+    fl_method: none
+    privacy: none
+    client_split_dir:
+    output_dir: experiments/centralized/A0_centralized_vit_base
+    metrics_path: results/metrics/A0_centralized_vit_base_metrics.json
+
+  A1_fedavg_iid_vit_base:
+    experiment_id: A1_fedavg_iid_vit_base
+    experiment_name: "A1: FedAvg + ViT-Base, IID clients"
+    model_name: vit_base_patch16_224
+    fl_method: fedavg
+    privacy: none
+    client_split_dir: data/splits/clients_iid
+    output_dir: experiments/fedavg_iid/A1_fedavg_iid_vit_base
+    metrics_path: results/metrics/A1_fedavg_iid_vit_base_metrics.json
+
+  A2_fedavg_noniid_vit_base:
+    experiment_id: A2_fedavg_noniid_vit_base
+    experiment_name: "A2: FedAvg + ViT-Base, non-IID clients"
+    model_name: vit_base_patch16_224
+    fl_method: fedavg
+    privacy: none
+    client_split_dir: data/splits/clients_noniid
+    output_dir: experiments/fedavg_noniid/A2_fedavg_noniid_vit_base
+    metrics_path: results/metrics/A2_fedavg_noniid_vit_base_metrics.json
+
+  A3_fedavg_ckks_iid_vit_base:
+    experiment_id: A3_fedavg_ckks_iid_vit_base
+    experiment_name: "A3: FedAvg + ViT-Base + CKKS, IID clients"
+    model_name: vit_base_patch16_224
+    fl_method: fedavg
+    privacy: ckks_secure_aggregation
+    client_split_dir: data/splits/clients_iid
+    output_dir: experiments/fedavg_ckks_iid/A3_fedavg_ckks_iid_vit_base
+    metrics_path: results/metrics/A3_fedavg_ckks_iid_vit_base_metrics.json
+
+  A4_fedavg_ckks_noniid_vit_base:
+    experiment_id: A4_fedavg_ckks_noniid_vit_base
+    experiment_name: "A4: FedAvg + ViT-Base + CKKS, non-IID clients"
+    model_name: vit_base_patch16_224
+    fl_method: fedavg
+    privacy: ckks_secure_aggregation
+    client_split_dir: data/splits/clients_noniid
+    output_dir: experiments/fedavg_ckks_noniid/A4_fedavg_ckks_noniid_vit_base
+    metrics_path: results/metrics/A4_fedavg_ckks_noniid_vit_base_metrics.json
+
+# Optional debug-only D0 centralized ViT-Tiny is intentionally not included in
+# the main paper ablation list. Add it only after explicit approval.

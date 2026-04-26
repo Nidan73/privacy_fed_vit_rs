@@ -12,6 +12,8 @@ from utils import resolve_path
 
 OVERRIDE_FIELDS = {
     "epochs": "epochs",
+    "global_rounds": "global_rounds",
+    "local_epochs": "local_epochs",
     "batch_size": "batch_size",
     "lr": "learning_rate",
     "weight_decay": "weight_decay",
@@ -128,9 +130,9 @@ def run_experiment(config: dict[str, Any], dry_run: bool = False, no_train: bool
         return run_training(config, dry_run=dry_run)
 
     if fl_method == "fedavg" and privacy == "none":
-        print("\nTODO: FedAvg training pipeline is not implemented yet.")
-        print("This branch will use train_fedavg.py after centralized training is validated.")
-        return None
+        from train_fedavg import run_training
+
+        return run_training(config, dry_run=dry_run)
 
     if fl_method == "fedavg" and privacy == "ckks_secure_aggregation":
         print("\nTODO: FedAvg + CKKS secure aggregation pipeline is not implemented yet.")
@@ -145,6 +147,8 @@ def main() -> None:
     parser.add_argument("--config", default="configs/ablation_plan.yaml", help="Path to config YAML.")
     parser.add_argument("--experiment_id", required=True, help="Experiment ID from the config.")
     parser.add_argument("--epochs", type=int, help="Override configured epoch count.")
+    parser.add_argument("--global_rounds", type=int, help="Override configured FedAvg global rounds.")
+    parser.add_argument("--local_epochs", type=int, help="Override configured FedAvg local epochs.")
     parser.add_argument("--batch_size", type=int, help="Override configured batch size.")
     parser.add_argument("--lr", type=float, help="Override configured learning rate.")
     parser.add_argument("--weight_decay", type=float, help="Override configured weight decay.")

@@ -97,6 +97,20 @@ Example resume command:
 python src/run_experiment.py --experiment_id A0_centralized_vit_base --epochs 10 --output_suffix 10ep_resume --resume_from experiments/centralized/A0_centralized_vit_base_10ep/checkpoints/last.pt
 ```
 
+A1 FedAvg IID dry-run:
+
+```bash
+python src/run_experiment.py --experiment_id A1_fedavg_iid_vit_base --dry_run
+```
+
+A1 full small run:
+
+```bash
+python src/run_experiment.py --experiment_id A1_fedavg_iid_vit_base --global_rounds 5 --local_epochs 1 --output_suffix 5r1e
+```
+
+A1 should be run only after A0 centralized training works. A1 uses the IID client split in `data/splits/clients_iid` and does not include CKKS secure aggregation.
+
 Recommended order:
 
 1. Validate centralized ViT-Base first.

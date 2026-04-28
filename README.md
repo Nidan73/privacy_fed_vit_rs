@@ -135,6 +135,8 @@ Dry-run A3 before any full experiment:
 python src/run_experiment.py --experiment_id A3_fedavg_ckks_iid_vit_base --dry_run
 ```
 
+A4 uses the same `selected_layer_ckks` privacy mode with manual chunked CKKS aggregation, but runs on the non-IID client split in `data/splits/clients_noniid`.
+
 ## Seed Stability Check
 
 UCMerced has a small test set, so repeated runs with different seeds should be summarized before final reporting. Use `--output_suffix` for every repeat so existing results are not overwritten.

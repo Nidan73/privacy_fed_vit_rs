@@ -139,6 +139,8 @@ python src/run_experiment.py --experiment_id A3_fedavg_ckks_iid_vit_base --dry_r
 
 UCMerced has a small test set, so repeated runs with different seeds should be summarized before final reporting. Use `--output_suffix` for every repeat so existing results are not overwritten.
 
+Seed-stability summaries only average comparable runs with the same model, training length, client split, optimizer settings, and CKKS aggregation scope. Runs without a recorded seed are included in `experiment_summary.csv`, but they are excluded from mean/std summaries by default; pass `--include_missing_seed` to `compare_experiments.py` only when you intentionally want to include legacy metrics.
+
 Example repeat commands:
 
 ```bash

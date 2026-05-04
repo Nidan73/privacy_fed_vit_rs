@@ -69,12 +69,16 @@ python src/run_experiment.py --experiment_id N1_fedavg_iid_vit_base_nwpu --globa
 
 The existing `data/splits/nwpu/clients_noniid` partition is a mild/simple class-skew setting. It is useful as a controlled non-IID baseline, but every client still sees all 45 classes.
 
-NWPU also includes a harder Dirichlet label-distribution protocol with `alpha=0.3` in `data/splits/nwpu/clients_dirichlet_alpha03`. Serious non-IID claims should use this Dirichlet split, not only the mild split.
+NWPU also includes Dirichlet label-distribution protocols. `alpha=0.3` in `data/splits/nwpu/clients_dirichlet_alpha03` is a moderate/harder non-IID setting. `alpha=0.1` in `data/splits/nwpu/clients_dirichlet_alpha01` is the severe Dirichlet non-IID setting. Serious robustness claims should be based on `alpha=0.1` if it passes sanity checks, not only the mild or `alpha=0.3` splits.
 
 ```bash
 python src/client_partition.py --train_csv data/splits/nwpu/train.csv --num_clients 3 --output_dir data/splits/nwpu --partition_type dirichlet --dirichlet_alpha 0.3 --seed 42
 python src/sanity_check_splits.py --train_csv data/splits/nwpu/train.csv --val_csv data/splits/nwpu/val.csv --test_csv data/splits/nwpu/test.csv --iid_dir data/splits/nwpu/clients_iid --noniid_dir data/splits/nwpu/clients_noniid --extra_client_dir data/splits/nwpu/clients_dirichlet_alpha03 --expected_train_per_class 140 --expected_val_per_class 70 --expected_test_per_class 490
 python src/run_experiment.py --experiment_id N2D_fedavg_dirichlet03_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
+
+python src/client_partition.py --train_csv data/splits/nwpu/train.csv --num_clients 3 --output_dir data/splits/nwpu --partition_type dirichlet --dirichlet_alpha 0.1 --seed 42
+python src/sanity_check_splits.py --train_csv data/splits/nwpu/train.csv --val_csv data/splits/nwpu/val.csv --test_csv data/splits/nwpu/test.csv --iid_dir data/splits/nwpu/clients_iid --noniid_dir data/splits/nwpu/clients_noniid --extra_client_dir data/splits/nwpu/clients_dirichlet_alpha01 --expected_train_per_class 140 --expected_val_per_class 70 --expected_test_per_class 490
+python src/run_experiment.py --experiment_id N2D01_fedavg_dirichlet01_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
 ```
 
 ## Data Policy
@@ -92,6 +96,7 @@ Tracked data artifacts:
 - `data/splits/nwpu/clients_iid/*.csv`
 - `data/splits/nwpu/clients_noniid/*.csv`
 - `data/splits/nwpu/clients_dirichlet_alpha03/*.csv`
+- `data/splits/nwpu/clients_dirichlet_alpha01/*.csv`
 - `results/metrics/dataset_summary.csv`
 
 ## Reproduce Current Dataset State

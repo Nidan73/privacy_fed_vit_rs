@@ -162,16 +162,17 @@ def read_client_csvs(client_dir: Path, prefix: str) -> list[tuple[int, Path, pd.
 
 def client_distribution_rows(clients: list[tuple[int, Path, pd.DataFrame]], partition_name: str) -> list[dict[str, Any]]:
     rows = []
+    all_classes = sorted(set().union(*(set(df["class_name"].astype(str)) for _, _, df in clients)))
     for client_id, path, df in clients:
-        counts = df["class_name"].value_counts().sort_index()
-        for class_name, count in counts.items():
+        counts = df["class_name"].astype(str).value_counts()
+        for class_name in all_classes:
             rows.append(
                 {
                     "partition": partition_name,
                     "client_id": client_id,
                     "client_csv": path.as_posix(),
                     "class_name": class_name,
-                    "count": int(count),
+                    "count": int(counts.get(class_name, 0)),
                 }
             )
     return rows
@@ -243,6 +244,10 @@ def print_distribution_table(rows: list[dict[str, Any]], title: str) -> None:
     print(pivot.to_string())
 
 
+def safe_report_key(path: Path) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", path.name).strip("_").lower()
+
+
 def inspect_evaluation_config() -> dict[str, Any]:
     centralized_source = resolve_path("src/train_centralized.py").read_text(encoding="utf-8")
     fedavg_source = resolve_path("src/train_fedavg.py").read_text(encoding="utf-8")
@@ -255,7 +260,8 @@ def inspect_evaluation_config() -> dict[str, Any]:
         "a1_client_training_uses_client_split_dir": 'client_csvs = load_client_csvs(config["client_split_dir"]' in fedavg_source,
         "a1_config_iid_client_split_dir": "client_split_dir: data/splits/clients_iid" in config_source,
         "a1_no_val_or_test_client_training_source_pattern": (
-            "build_client_loader(client_csv" in fedavg_source
+            "client_loader = build_client_loader(" in fedavg_source
+            and "client_csv," in fedavg_source
             and 'build_client_loader(config["val_csv"]' not in fedavg_source
             and 'build_client_loader(config["test_csv"]' not in fedavg_source
         ),
@@ -270,6 +276,11 @@ def main() -> None:
     parser.add_argument("--test_csv", help="Test split CSV. Defaults to --splits_dir/test.csv.")
     parser.add_argument("--iid_dir", help="IID client CSV directory. Defaults to --splits_dir/clients_iid.")
     parser.add_argument("--noniid_dir", help="Non-IID client CSV directory. Defaults to --splits_dir/clients_noniid.")
+    parser.add_argument(
+        "--extra_client_dir",
+        action="append",
+        help="Additional client CSV directory to verify against train/val/test splits.",
+    )
     parser.add_argument("--expected_train_per_class", type=int, default=EXPECTED_TRAIN_PER_CLASS)
     parser.add_argument("--expected_val_per_class", type=int, default=EXPECTED_VAL_PER_CLASS)
     parser.add_argument("--expected_test_per_class", type=int, default=EXPECTED_TEST_PER_CLASS)
@@ -287,6 +298,7 @@ def main() -> None:
     test_csv = resolve_path(args.test_csv) if args.test_csv else splits_dir / "test.csv"
     iid_dir = resolve_path(args.iid_dir) if args.iid_dir else splits_dir / "clients_iid"
     noniid_dir = resolve_path(args.noniid_dir) if args.noniid_dir else splits_dir / "clients_noniid"
+    extra_client_dirs = [resolve_path(path) for path in (args.extra_client_dir or [])]
     report_prefix = args.report_prefix if args.report_prefix is not None else infer_report_prefix(train_csv)
 
     train_df = load_split_csv(train_csv, "train")
@@ -360,13 +372,44 @@ def main() -> None:
     noniid_rows = client_distribution_rows(noniid_clients, "noniid")
     print_distribution_table(iid_rows, "IID Per-Client Class Distribution")
     print_distribution_table(noniid_rows, "Non-IID Per-Client Class Distribution")
+
+    extra_clients_by_key: dict[str, list[tuple[int, Path, pd.DataFrame]]] = {}
+    extra_reports: dict[str, dict[str, Any]] = {}
+    extra_rows_by_key: dict[str, list[dict[str, Any]]] = {}
+    for extra_dir in extra_client_dirs:
+        key = safe_report_key(extra_dir)
+        extra_clients = read_client_csvs(extra_dir, key)
+        extra_clients_by_key[key] = extra_clients
+        extra_reports[key] = check_client_partition(
+            extra_clients,
+            key,
+            split_paths["train"],
+            split_paths["val"],
+            split_paths["test"],
+        )
+        extra_rows = client_distribution_rows(extra_clients, key)
+        extra_rows_by_key[key] = extra_rows
+        print_distribution_table(extra_rows, f"{key} Per-Client Class Distribution")
+
     iid_duplicate_counts = client_internal_duplicate_counts(iid_clients)
     noniid_duplicate_counts = client_internal_duplicate_counts(noniid_clients)
+    extra_duplicate_counts = {
+        key: client_internal_duplicate_counts(clients)
+        for key, clients in extra_clients_by_key.items()
+    }
     iid_missing_path_counts = client_missing_path_counts(iid_clients)
     noniid_missing_path_counts = client_missing_path_counts(noniid_clients)
+    extra_missing_path_counts = {
+        key: client_missing_path_counts(clients)
+        for key, clients in extra_clients_by_key.items()
+    }
     client_label_mapping_consistent = (
         client_mapping_consistent(iid_clients, reference_mapping, reference_class_mapping)
         and client_mapping_consistent(noniid_clients, reference_mapping, reference_class_mapping)
+        and all(
+            client_mapping_consistent(clients, reference_mapping, reference_class_mapping)
+            for clients in extra_clients_by_key.values()
+        )
     )
 
     evaluation_config = inspect_evaluation_config()
@@ -385,8 +428,12 @@ def main() -> None:
         warnings.append("Per-class split counts do not match expected counts.")
     if any(iid_duplicate_counts.values()) or any(noniid_duplicate_counts.values()):
         warnings.append("Duplicate image_path values found inside one or more client CSVs.")
+    if any(any(counts.values()) for counts in extra_duplicate_counts.values()):
+        warnings.append("Duplicate image_path values found inside one or more extra client CSVs.")
     if any(iid_missing_path_counts.values()) or any(noniid_missing_path_counts.values()):
         warnings.append("One or more client image paths do not exist on disk.")
+    if any(any(counts.values()) for counts in extra_missing_path_counts.values()):
+        warnings.append("One or more extra client image paths do not exist on disk.")
     if not client_label_mapping_consistent:
         warnings.append("class_name/label mapping is inconsistent in one or more client CSVs.")
     if not iid_report["covers_train_exactly_once"]:
@@ -397,6 +444,13 @@ def main() -> None:
         warnings.append("One or more client partitions contain images outside train.csv.")
     if not iid_report["no_val_test_images"] or not noniid_report["no_val_test_images"]:
         warnings.append("One or more client partitions contain val/test images.")
+    for key, extra_report in extra_reports.items():
+        if not extra_report["covers_train_exactly_once"]:
+            warnings.append(f"{key} clients do not cover train.csv exactly once.")
+        if not extra_report["train_only"]:
+            warnings.append(f"{key} clients contain images outside train.csv.")
+        if not extra_report["no_val_test_images"]:
+            warnings.append(f"{key} clients contain val/test images.")
     if not all(evaluation_config.values()):
         warnings.append("Evaluation config source inspection found a failed check.")
 
@@ -407,6 +461,7 @@ def main() -> None:
         "test_csv": test_csv.as_posix(),
         "iid_dir": iid_dir.as_posix(),
         "noniid_dir": noniid_dir.as_posix(),
+        "extra_client_dirs": [path.as_posix() for path in extra_client_dirs],
         "expected_per_class_counts": {
             "train": args.expected_train_per_class,
             "val": args.expected_val_per_class,
@@ -426,13 +481,16 @@ def main() -> None:
         "class_count_mismatches": class_count_mismatches,
         "iid_clients": iid_report,
         "noniid_clients": noniid_report,
+        "extra_clients": extra_reports,
         "client_duplicate_paths_inside_csv": {
             "iid": iid_duplicate_counts,
             "noniid": noniid_duplicate_counts,
+            "extra": extra_duplicate_counts,
         },
         "client_missing_image_path_counts": {
             "iid": iid_missing_path_counts,
             "noniid": noniid_missing_path_counts,
+            "extra": extra_missing_path_counts,
         },
         "client_label_mapping_consistent": client_label_mapping_consistent,
         "evaluation_config": evaluation_config,
@@ -452,6 +510,11 @@ def main() -> None:
     noniid_table_path = tables_dir / f"{report_prefix}noniid_client_class_distribution.csv"
     pd.DataFrame(iid_rows).to_csv(iid_table_path, index=False)
     pd.DataFrame(noniid_rows).to_csv(noniid_table_path, index=False)
+    extra_table_paths = {}
+    for key, rows in extra_rows_by_key.items():
+        table_path = tables_dir / f"{report_prefix}{key}_client_class_distribution.csv"
+        pd.DataFrame(rows).to_csv(table_path, index=False)
+        extra_table_paths[key] = table_path
 
     print("\nSplit Sanity Summary")
     print("====================")
@@ -467,6 +530,10 @@ def main() -> None:
     print(f"Non-IID train-only: {noniid_report['train_only']}")
     print(f"Non-IID covers train exactly once: {noniid_report['covers_train_exactly_once']}")
     print(f"Non-IID no val/test images: {noniid_report['no_val_test_images']}")
+    for key, extra_report in extra_reports.items():
+        print(f"{key} train-only: {extra_report['train_only']}")
+        print(f"{key} covers train exactly once: {extra_report['covers_train_exactly_once']}")
+        print(f"{key} no val/test images: {extra_report['no_val_test_images']}")
     print(f"A0 uses configured test_csv: {evaluation_config['a0_uses_configured_test_csv']}")
     print(f"A1 uses configured test_csv: {evaluation_config['a1_uses_configured_test_csv']}")
     print(f"A1 uses configured val_csv: {evaluation_config['a1_uses_configured_val_csv']}")
@@ -477,6 +544,8 @@ def main() -> None:
     print(f"\nSaved report: {report_path}")
     print(f"Saved IID table: {iid_table_path}")
     print(f"Saved non-IID table: {noniid_table_path}")
+    for key, table_path in extra_table_paths.items():
+        print(f"Saved {key} table: {table_path}")
 
     if warnings:
         raise SystemExit(1)

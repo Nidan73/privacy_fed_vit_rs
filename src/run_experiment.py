@@ -160,7 +160,7 @@ def main() -> None:
     parser.add_argument(
         "--aug_policy",
         choices=["basic", "remote_sensing_strong"],
-        help="Override centralized training augmentation policy.",
+        help="Override training augmentation policy.",
     )
     parser.add_argument("--label_smoothing", type=float, help="Override label smoothing value.")
     parser.add_argument(

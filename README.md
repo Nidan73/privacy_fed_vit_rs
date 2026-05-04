@@ -59,6 +59,12 @@ Stronger N0 centralized fine-tuning candidate:
 python src/run_experiment.py --experiment_id N0_centralized_vit_base_nwpu --epochs 20 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --output_suffix 20ep_lr5e5_aug_ls_cosine
 ```
 
+Improved N1 FedAvg IID fine-tuning candidate:
+
+```bash
+python src/run_experiment.py --experiment_id N1_fedavg_iid_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
+```
+
 ## Data Policy
 
 Raw datasets are not committed to GitHub. The repository keeps source code, notebooks, reproducible split CSV files, metric summaries, and paper draft folders. Downloaded images, processed data, model checkpoints, caches, and large generated logs are ignored by `.gitignore`.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import time
 from contextlib import nullcontext
 from pathlib import Path
@@ -15,7 +16,7 @@ from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import RemoteSensingCSVDataset
+from dataset import SUPPORTED_AUG_POLICIES, RemoteSensingCSVDataset
 from model import get_model
 from secure_aggregation_ckks import (
     create_ckks_context,
@@ -104,8 +105,14 @@ def build_eval_loader(csv_path: str | Path, batch_size: int, num_workers: int, d
     )
 
 
-def build_client_loader(csv_path: str | Path, batch_size: int, num_workers: int, device_is_cuda: bool) -> DataLoader:
-    dataset = RemoteSensingCSVDataset(csv_path, train=True)
+def build_client_loader(
+    csv_path: str | Path,
+    batch_size: int,
+    num_workers: int,
+    device_is_cuda: bool,
+    aug_policy: str,
+) -> DataLoader:
+    dataset = RemoteSensingCSVDataset(csv_path, train=True, aug_policy=aug_policy)
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -113,6 +120,20 @@ def build_client_loader(csv_path: str | Path, batch_size: int, num_workers: int,
         num_workers=num_workers,
         pin_memory=device_is_cuda,
     )
+
+
+def round_learning_rate(
+    base_learning_rate: float,
+    scheduler_name: str,
+    round_index: int,
+    total_rounds: int,
+) -> float:
+    if scheduler_name == "none":
+        return base_learning_rate
+    if scheduler_name == "cosine":
+        progress = float(round_index - 1) / max(float(total_rounds), 1.0)
+        return base_learning_rate * 0.5 * (1.0 + math.cos(math.pi * progress))
+    raise ValueError("scheduler must be one of: none, cosine")
 
 
 def train_client(
@@ -414,7 +435,16 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     num_workers = int(config.get("num_workers", 0))
     learning_rate = float(config["learning_rate"])
     weight_decay = float(config["weight_decay"])
+    aug_policy = str(config.get("aug_policy", "basic"))
+    label_smoothing = float(config.get("label_smoothing", 0.0))
+    scheduler_name = str(config.get("scheduler", "none"))
     privacy = config.get("privacy", "none")
+    if aug_policy not in SUPPORTED_AUG_POLICIES:
+        raise ValueError(f"aug_policy must be one of: {sorted(SUPPORTED_AUG_POLICIES)}")
+    if label_smoothing < 0.0 or label_smoothing >= 1.0:
+        raise ValueError("label_smoothing must be in the range [0.0, 1.0).")
+    if scheduler_name not in {"none", "cosine"}:
+        raise ValueError("scheduler must be one of: none, cosine")
     if privacy not in {"none", "selected_layer_ckks"}:
         raise ValueError(f"Unsupported FedAvg privacy mode: {privacy}")
 
@@ -447,10 +477,14 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     print(f"device: {device}")
     print(f"cuda_available: {torch.cuda.is_available()}")
     print(f"amp_enabled: {amp_enabled}")
+    print(f"aug_policy: {aug_policy}")
+    print(f"label_smoothing: {label_smoothing}")
+    print(f"scheduler: {scheduler_name}")
 
     val_loader = build_eval_loader(config["val_csv"], batch_size, num_workers, device_is_cuda)
     test_loader = build_eval_loader(config["test_csv"], batch_size, num_workers, device_is_cuda)
-    criterion = nn.CrossEntropyLoss()
+    train_criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+    eval_criterion = nn.CrossEntropyLoss()
 
     global_model = get_model(
         model_name=config["model_name"],
@@ -514,11 +548,23 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
             torch.cuda.reset_peak_memory_stats()
 
         round_start = time.perf_counter()
+        current_learning_rate = round_learning_rate(
+            base_learning_rate=learning_rate,
+            scheduler_name=scheduler_name,
+            round_index=round_index,
+            total_rounds=global_rounds,
+        )
         global_state = cpu_state_dict(global_model)
         client_states: list[dict[str, torch.Tensor]] = []
 
         for client_id, client_csv in enumerate(client_csvs):
-            client_loader = build_client_loader(client_csv, batch_size, num_workers, device_is_cuda)
+            client_loader = build_client_loader(
+                client_csv,
+                batch_size,
+                num_workers,
+                device_is_cuda,
+                aug_policy=aug_policy,
+            )
             client_model = get_model(
                 model_name=config["model_name"],
                 num_classes=num_classes,
@@ -528,14 +574,14 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
 
             optimizer = torch.optim.AdamW(
                 client_model.parameters(),
-                lr=learning_rate,
+                lr=current_learning_rate,
                 weight_decay=weight_decay,
             )
             scaler = build_grad_scaler(amp_enabled)
             client_metrics = train_client(
                 model=client_model,
                 loader=client_loader,
-                criterion=criterion,
+                criterion=train_criterion,
                 optimizer=optimizer,
                 scaler=scaler,
                 device=device,
@@ -553,6 +599,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 f"Round {round_index}/{global_rounds} | "
                 f"Client {client_id} | "
                 f"samples={sample_count} | "
+                f"lr={current_learning_rate:.6g} | "
                 f"loss={client_metrics['loss']:.4f} | "
                 f"acc={client_metrics['accuracy'] * 100:.1f}% | "
                 f"gpu={gpu_text}"
@@ -563,6 +610,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                     "client_id": client_id,
                     "client_csv": client_csv.as_posix(),
                     "samples": sample_count,
+                    "learning_rate": current_learning_rate,
                     "train_loss": client_metrics["loss"],
                     "train_accuracy": client_metrics["accuracy"],
                     "batches_seen": int(client_metrics["batches_seen"]),
@@ -602,7 +650,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         val_metrics = evaluate(
             model=global_model,
             loader=val_loader,
-            criterion=criterion,
+            criterion=eval_criterion,
             device=device,
             amp_enabled=amp_enabled,
             desc=f"Round {round_index} val",
@@ -635,6 +683,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 "val_accuracy": val_metrics["accuracy"],
                 "val_macro_f1": val_metrics["macro_f1"],
                 "val_weighted_f1": val_metrics["weighted_f1"],
+                "learning_rate": current_learning_rate,
                 "ckks_encryption_time": ckks_info["ckks_encryption_time"],
                 "ckks_aggregation_time": ckks_info["ckks_aggregation_time"],
                 "ckks_decryption_time": ckks_info["ckks_decryption_time"],
@@ -683,7 +732,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         test_metrics = evaluate(
             model=global_model,
             loader=test_loader,
-            criterion=criterion,
+            criterion=eval_criterion,
             device=device,
             amp_enabled=amp_enabled,
             desc="FedAvg test",
@@ -730,6 +779,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "batch_size": batch_size,
         "learning_rate": learning_rate,
         "weight_decay": weight_decay,
+        "aug_policy": aug_policy,
+        "label_smoothing": label_smoothing,
+        "scheduler": scheduler_name,
         "seed": int(config["seed"]),
         "selected_ckks_keys": selected_ckks_keys,
         "selected_ckks_num_parameters": selected_ckks_num_parameters,
@@ -804,6 +856,9 @@ def cli_config(args: argparse.Namespace) -> dict[str, Any]:
         "seed": args.seed,
         "device": args.device,
         "resume_from": args.resume_from,
+        "aug_policy": args.aug_policy,
+        "label_smoothing": args.label_smoothing,
+        "scheduler": args.scheduler,
     }
 
 
@@ -829,6 +884,14 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", help="Optional device override, for example cuda or cpu.")
     parser.add_argument("--resume_from", help="Optional FedAvg checkpoint to resume from.")
+    parser.add_argument(
+        "--aug_policy",
+        choices=sorted(SUPPORTED_AUG_POLICIES),
+        default="basic",
+        help="Training augmentation policy for local client loaders.",
+    )
+    parser.add_argument("--label_smoothing", type=float, default=0.0)
+    parser.add_argument("--scheduler", choices=["none", "cosine"], default="none")
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--no_train", action="store_true")
     args = parser.parse_args()

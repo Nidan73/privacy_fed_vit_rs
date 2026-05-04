@@ -46,6 +46,8 @@ Thumbs.db
 !results/metrics/clients_noniid/        
 !results/metrics/clients_noniid/*.csv   
 
+papers/draft/
+
 papers/drafts/figures/*.png   
 papers/drafts/figures/*.pdf 
 papers/drafts/figures/*.jpeg  

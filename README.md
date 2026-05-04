@@ -87,6 +87,13 @@ python src/run_experiment.py --experiment_id N2D01_fedavg_dirichlet01_vit_base_n
 python src/run_experiment.py --experiment_id N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
 ```
 
+Head-only CKKS remains the original selected-layer method. `N3HN_fedavg_ckks_iid_vit_base_nwpu` and `N4D01HN_fedavg_ckks_dirichlet01_vit_base_nwpu` are extended selected-layer variants that encrypt the classifier head plus final normalization tensors (`head.weight`, `head.bias`, `norm.weight`, `norm.bias`). Full ViT-Base is still not encrypted; all non-selected backbone parameters remain plaintext FedAvg.
+
+```bash
+python src/run_experiment.py --experiment_id N3HN_fedavg_ckks_iid_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
+python src/run_experiment.py --experiment_id N4D01HN_fedavg_ckks_dirichlet01_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
+```
+
 ## Data Policy
 
 Raw datasets are not committed to GitHub. The repository keeps source code, notebooks, reproducible split CSV files, metric summaries, and paper draft folders. Downloaded images, processed data, model checkpoints, caches, and large generated logs are ignored by `.gitignore`.
@@ -185,11 +192,11 @@ This test uses toy client update vectors and TenSEAL CKKS encryption. Full ViT-B
 
 ## A3 Selected-Layer CKKS FedAvg
 
-A3 uses selected-layer CKKS secure aggregation. Only classifier head parameters, such as `head.weight` and `head.bias`, are CKKS-encrypted during aggregation. The remaining ViT-Base parameters use normal plaintext FedAvg.
+A3 uses selected-layer CKKS secure aggregation. The original method is head-only: only classifier head parameters, such as `head.weight` and `head.bias`, are CKKS-encrypted during aggregation. The remaining ViT-Base parameters use normal plaintext FedAvg.
 
 A3 uses manual chunked CKKS aggregation for selected classifier-head parameters. This avoids oversized CKKS vectors and keeps the encrypted aggregation operation limited to weighted addition and decryption.
 
-This is the practical first privacy-aware setting for this project. Full-model CKKS is not attempted yet because ViT-Base has about 85.8M parameters and full encryption may be too slow and memory-heavy.
+Head+Norm CKKS is an extended selected-layer variant that additionally encrypts `norm.weight` and `norm.bias`. Full-model CKKS is still not attempted because ViT-Base has about 85.8M parameters and full encryption may be too slow and memory-heavy. Backbone parameters outside the configured selected keys remain plaintext FedAvg.
 
 Dry-run A3 before any full experiment:
 

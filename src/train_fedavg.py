@@ -20,10 +20,10 @@ from dataset import SUPPORTED_AUG_POLICIES, RemoteSensingCSVDataset
 from model import get_model
 from secure_aggregation_ckks import (
     create_ckks_context,
-    get_classification_head_keys,
     get_ckks_slot_count,
     mixed_plaintext_ckks_fedavg,
     plaintext_aggregate_state_dicts,
+    resolve_selected_ckks_keys,
 )
 from utils import resolve_path, set_seed
 
@@ -507,9 +507,10 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     ckks_num_chunks = 0
 
     if privacy == "selected_layer_ckks":
-        selected_ckks_keys = get_classification_head_keys(global_model.state_dict())
-        if not selected_ckks_keys:
-            raise ValueError("No classifier head keys found for selected-layer CKKS aggregation.")
+        selected_ckks_keys = resolve_selected_ckks_keys(
+            global_model.state_dict(),
+            config.get("selected_ckks_keys"),
+        )
         selected_ckks_num_parameters = int(
             sum(global_model.state_dict()[key].numel() for key in selected_ckks_keys)
         )
@@ -859,6 +860,7 @@ def cli_config(args: argparse.Namespace) -> dict[str, Any]:
         "aug_policy": args.aug_policy,
         "label_smoothing": args.label_smoothing,
         "scheduler": args.scheduler,
+        "selected_ckks_keys": args.selected_ckks_keys,
     }
 
 
@@ -892,6 +894,11 @@ def main() -> None:
     )
     parser.add_argument("--label_smoothing", type=float, default=0.0)
     parser.add_argument("--scheduler", choices=["none", "cosine"], default="none")
+    parser.add_argument(
+        "--selected_ckks_keys",
+        nargs="+",
+        help="Optional explicit CKKS tensor keys, for example head.weight head.bias norm.weight norm.bias.",
+    )
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--no_train", action="store_true")
     args = parser.parse_args()

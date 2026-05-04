@@ -7,6 +7,9 @@ import numpy as np
 import torch
 
 
+DEFAULT_SELECTED_CKKS_KEYS = ("head.weight", "head.bias")
+
+
 def _require_tenseal():
     try:
         import tenseal as ts
@@ -202,7 +205,7 @@ def get_classification_head_keys(model_state_dict: dict[str, torch.Tensor]) -> l
     For timm ViT-Base this is usually `head.weight` and `head.bias`.
     The fallback patterns keep the function usable if a classifier alias is used.
     """
-    preferred_keys = ["head.weight", "head.bias"]
+    preferred_keys = list(DEFAULT_SELECTED_CKKS_KEYS)
     selected = [key for key in preferred_keys if key in model_state_dict]
     if selected:
         return selected
@@ -213,6 +216,45 @@ def get_classification_head_keys(model_state_dict: dict[str, torch.Tensor]) -> l
         for key, tensor in model_state_dict.items()
         if torch.is_floating_point(tensor) and key.startswith(fallback_prefixes)
     ]
+
+
+def resolve_selected_ckks_keys(
+    model_state_dict: dict[str, torch.Tensor],
+    requested_keys: Sequence[str] | str | None = None,
+) -> list[str]:
+    """Resolve and validate selected-layer CKKS keys.
+
+    With no explicit config, this keeps the original head-only behavior. When
+    keys are provided, every selected tensor must exist and be floating-point so
+    it can be flattened, CKKS-aggregated, and restored safely.
+    """
+    if requested_keys is None:
+        selected = get_classification_head_keys(model_state_dict)
+        if not selected:
+            raise ValueError("No classifier head keys found for selected-layer CKKS aggregation.")
+        return selected
+
+    if isinstance(requested_keys, str):
+        selected = [key.strip() for key in requested_keys.split(",") if key.strip()]
+    else:
+        selected = [str(key).strip() for key in requested_keys if str(key).strip()]
+
+    if not selected:
+        raise ValueError("selected_ckks_keys was provided but no valid keys were listed.")
+
+    duplicated = sorted({key for key in selected if selected.count(key) > 1})
+    if duplicated:
+        raise ValueError(f"selected_ckks_keys contains duplicate keys: {duplicated}")
+
+    missing = [key for key in selected if key not in model_state_dict]
+    if missing:
+        raise ValueError(f"selected_ckks_keys not found in model state_dict: {missing}")
+
+    non_floating = [key for key in selected if not torch.is_floating_point(model_state_dict[key])]
+    if non_floating:
+        raise ValueError(f"selected_ckks_keys must be floating-point tensors: {non_floating}")
+
+    return selected
 
 
 def flatten_tensors(

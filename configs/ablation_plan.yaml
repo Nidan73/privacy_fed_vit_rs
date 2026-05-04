@@ -9,6 +9,9 @@ defaults:
   batch_size: 16
   learning_rate: 1.0e-4
   weight_decay: 1.0e-4
+  aug_policy: basic
+  label_smoothing: 0.0
+  scheduler: none
   seed: 42
 
 experiments:

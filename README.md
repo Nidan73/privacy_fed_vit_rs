@@ -53,6 +53,12 @@ python src/client_partition.py --train_csv data/splits/nwpu/train.csv --num_clie
 python src/sanity_check_splits.py --train_csv data/splits/nwpu/train.csv --val_csv data/splits/nwpu/val.csv --test_csv data/splits/nwpu/test.csv --iid_dir data/splits/nwpu/clients_iid --noniid_dir data/splits/nwpu/clients_noniid --expected_train_per_class 140 --expected_val_per_class 70 --expected_test_per_class 490
 ```
 
+Stronger N0 centralized fine-tuning candidate:
+
+```bash
+python src/run_experiment.py --experiment_id N0_centralized_vit_base_nwpu --epochs 20 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --output_suffix 20ep_lr5e5_aug_ls_cosine
+```
+
 ## Data Policy
 
 Raw datasets are not committed to GitHub. The repository keeps source code, notebooks, reproducible split CSV files, metric summaries, and paper draft folders. Downloaded images, processed data, model checkpoints, caches, and large generated logs are ignored by `.gitignore`.

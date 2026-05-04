@@ -16,7 +16,7 @@ from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import RemoteSensingCSVDataset
+from dataset import SUPPORTED_AUG_POLICIES, RemoteSensingCSVDataset
 from model import get_model
 from utils import resolve_path, set_seed
 
@@ -33,8 +33,13 @@ def detect_num_classes(train_csv: str | Path) -> int:
 def build_dataloaders(config: dict[str, Any]) -> tuple[DataLoader, DataLoader, DataLoader]:
     batch_size = int(config["batch_size"])
     device_is_cuda = torch.cuda.is_available()
+    aug_policy = str(config.get("aug_policy", "basic"))
 
-    train_dataset = RemoteSensingCSVDataset(config["train_csv"], train=True)
+    train_dataset = RemoteSensingCSVDataset(
+        config["train_csv"],
+        train=True,
+        aug_policy=aug_policy,
+    )
     val_dataset = RemoteSensingCSVDataset(config["val_csv"], train=False)
     test_dataset = RemoteSensingCSVDataset(config["test_csv"], train=False)
 
@@ -67,6 +72,22 @@ def build_grad_scaler(enabled: bool):
     return torch.cuda.amp.GradScaler(enabled=enabled)
 
 
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    scheduler_name: str,
+    num_epochs: int,
+) -> torch.optim.lr_scheduler.LRScheduler | None:
+    if scheduler_name == "none":
+        return None
+    if scheduler_name == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
+    raise ValueError("scheduler must be one of: none, cosine")
+
+
+def current_learning_rate(optimizer: torch.optim.Optimizer) -> float:
+    return float(optimizer.param_groups[0]["lr"])
+
+
 def accuracy_from_counts(correct: int, total: int) -> float:
     return float(correct / total) if total else 0.0
 
@@ -95,6 +116,7 @@ def train_one_epoch(
     total_loss = 0.0
     total_samples = 0
     correct = 0
+    optimizer_steps = 0
 
     progress = tqdm(loader, desc=f"Epoch {epoch} train", leave=False)
     for batch_index, (images, labels) in enumerate(progress):
@@ -109,9 +131,14 @@ def train_one_epoch(
             outputs = model(images)
             loss = criterion(outputs, labels)
 
+        scale_before = scaler.get_scale() if amp_enabled and hasattr(scaler, "get_scale") else None
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+        if scale_before is None:
+            optimizer_steps += 1
+        elif scaler.get_scale() >= scale_before:
+            optimizer_steps += 1
 
         batch_size = labels.size(0)
         predictions = outputs.argmax(dim=1)
@@ -127,6 +154,7 @@ def train_one_epoch(
     return {
         "loss": float(total_loss / max(total_samples, 1)),
         "accuracy": accuracy_from_counts(correct, total_samples),
+        "optimizer_steps": float(optimizer_steps),
     }
 
 
@@ -238,6 +266,7 @@ def save_best_checkpoint(
 def save_last_checkpoint(
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None,
     scaler: Any,
     config: dict[str, Any],
     checkpoint_path: Path,
@@ -257,6 +286,8 @@ def save_last_checkpoint(
     }
     if amp_enabled:
         checkpoint["scaler_state_dict"] = scaler.state_dict()
+    if scheduler is not None:
+        checkpoint["scheduler_state_dict"] = scheduler.state_dict()
     torch.save(checkpoint, checkpoint_path)
 
 
@@ -285,6 +316,7 @@ def resume_training_state(
     config: dict[str, Any],
     model: nn.Module,
     optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None,
     scaler: Any,
     device: torch.device,
     amp_enabled: bool,
@@ -306,6 +338,12 @@ def resume_training_state(
         print("Loaded optimizer state from resume checkpoint.")
     else:
         print("Resume checkpoint has no optimizer state; optimizer starts fresh.")
+
+    if scheduler is not None and "scheduler_state_dict" in checkpoint:
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        print("Loaded scheduler state from resume checkpoint.")
+    elif scheduler is not None:
+        print("Resume checkpoint has no scheduler state; scheduler starts fresh.")
 
     if amp_enabled and "scaler_state_dict" in checkpoint:
         scaler.load_state_dict(checkpoint["scaler_state_dict"])
@@ -368,6 +406,15 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     amp_enabled = device.type == "cuda"
     num_classes = detect_num_classes(config["train_csv"])
+    aug_policy = str(config.get("aug_policy", "basic"))
+    label_smoothing = float(config.get("label_smoothing", 0.0))
+    scheduler_name = str(config.get("scheduler", "none"))
+    if aug_policy not in SUPPORTED_AUG_POLICIES:
+        raise ValueError(f"aug_policy must be one of: {sorted(SUPPORTED_AUG_POLICIES)}")
+    if label_smoothing < 0.0 or label_smoothing >= 1.0:
+        raise ValueError("label_smoothing must be in the range [0.0, 1.0).")
+    if scheduler_name not in {"none", "cosine"}:
+        raise ValueError("scheduler must be one of: none, cosine")
 
     print("\nCentralized Training Setup")
     print("==========================")
@@ -378,6 +425,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     print(f"device: {device}")
     print(f"cuda_available: {torch.cuda.is_available()}")
     print(f"amp_enabled: {amp_enabled}")
+    print(f"aug_policy: {aug_policy}")
+    print(f"label_smoothing: {label_smoothing}")
+    print(f"scheduler: {scheduler_name}")
 
     train_loader, val_loader, test_loader = build_dataloaders(config)
     print(f"train_batches: {len(train_loader)}")
@@ -392,7 +442,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
     parameter_count = count_parameters(model)
     print(f"model_parameter_count: {parameter_count}")
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=float(config["learning_rate"]),
@@ -402,12 +452,14 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
 
     paths = artifact_paths(config, dry_run=dry_run)
     num_epochs = 1 if dry_run else int(config["epochs"])
+    scheduler = build_scheduler(optimizer, scheduler_name, num_epochs)
     max_train_batches = 2 if dry_run else None
     max_val_batches = 2 if dry_run else None
     start_epoch, best_val_accuracy, best_epoch = resume_training_state(
         config=config,
         model=model,
         optimizer=optimizer,
+        scheduler=scheduler,
         scaler=scaler,
         device=device,
         amp_enabled=amp_enabled,
@@ -427,6 +479,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
             torch.cuda.reset_peak_memory_stats()
 
         epoch_start = time.perf_counter()
+        epoch_learning_rate = current_learning_rate(optimizer)
         train_metrics = train_one_epoch(
             model=model,
             loader=train_loader,
@@ -447,6 +500,10 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
             desc=f"Epoch {epoch} val",
             max_batches=max_val_batches,
         )
+        if scheduler is not None and train_metrics["optimizer_steps"] > 0:
+            scheduler.step()
+        elif scheduler is not None:
+            print(f"Epoch {epoch}: scheduler step skipped because optimizer made no updates.")
         epoch_time = time.perf_counter() - epoch_start
         print_epoch_summary(
             epoch=epoch,
@@ -465,6 +522,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
                 "val_accuracy": val_metrics["accuracy"],
                 "val_macro_f1": val_metrics["macro_f1"],
                 "val_weighted_f1": val_metrics["weighted_f1"],
+                "learning_rate": epoch_learning_rate,
                 "epoch_time_sec": epoch_time,
             }
         )
@@ -483,6 +541,7 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         save_last_checkpoint(
             model=model,
             optimizer=optimizer,
+            scheduler=scheduler,
             scaler=scaler,
             config=config,
             checkpoint_path=paths["last_checkpoint_path"],
@@ -533,6 +592,9 @@ def run_training(config: dict[str, Any], dry_run: bool = False) -> dict[str, Any
         "batch_size": int(config["batch_size"]),
         "learning_rate": float(config["learning_rate"]),
         "weight_decay": float(config["weight_decay"]),
+        "aug_policy": aug_policy,
+        "label_smoothing": label_smoothing,
+        "scheduler": scheduler_name,
         "seed": int(config["seed"]),
         "best_epoch": best_epoch,
         "best_val_accuracy": best_val_accuracy,
@@ -588,6 +650,9 @@ def cli_config(args: argparse.Namespace) -> dict[str, Any]:
         "output_dir": args.output_dir,
         "metrics_path": args.metrics_path,
         "resume_from": args.resume_from,
+        "aug_policy": args.aug_policy,
+        "label_smoothing": args.label_smoothing,
+        "scheduler": args.scheduler,
     }
 
 
@@ -608,6 +673,14 @@ def main() -> None:
     parser.add_argument("--output_dir", default="experiments/centralized/centralized_cli")
     parser.add_argument("--metrics_path", default="results/metrics/centralized_cli_metrics.json")
     parser.add_argument("--resume_from", help="Resume from a centralized training checkpoint.")
+    parser.add_argument(
+        "--aug_policy",
+        choices=sorted(SUPPORTED_AUG_POLICIES),
+        default="basic",
+        help="Training augmentation policy. Evaluation transforms stay deterministic.",
+    )
+    parser.add_argument("--label_smoothing", type=float, default=0.0)
+    parser.add_argument("--scheduler", choices=["none", "cosine"], default="none")
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--no_train", action="store_true")
     args = parser.parse_args()

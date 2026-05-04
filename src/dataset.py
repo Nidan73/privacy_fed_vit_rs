@@ -12,14 +12,38 @@ from config import IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD
 from utils import resolve_path
 
 
-def get_train_transforms(image_size: int = IMAGE_SIZE) -> transforms.Compose:
-    return transforms.Compose(
-        [
-            transforms.Resize((image_size, image_size)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        ]
+SUPPORTED_AUG_POLICIES = {"basic", "remote_sensing_strong"}
+
+
+def get_train_transforms(
+    image_size: int = IMAGE_SIZE,
+    aug_policy: str = "basic",
+) -> transforms.Compose:
+    if aug_policy == "basic":
+        return transforms.Compose(
+            [
+                transforms.Resize((image_size, image_size)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ]
+        )
+
+    if aug_policy == "remote_sensing_strong":
+        return transforms.Compose(
+            [
+                transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
+                transforms.RandomRotation(15),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ]
+        )
+
+    raise ValueError(
+        f"Unsupported aug_policy: {aug_policy}. "
+        f"Supported policies: {sorted(SUPPORTED_AUG_POLICIES)}"
     )
 
 
@@ -39,6 +63,7 @@ class RemoteSensingCSVDataset(Dataset):
         csv_path: str | Path,
         transform: transforms.Compose | None = None,
         train: bool = False,
+        aug_policy: str = "basic",
     ) -> None:
         self.csv_path = resolve_path(csv_path)
         self.data = pd.read_csv(self.csv_path)
@@ -48,7 +73,9 @@ class RemoteSensingCSVDataset(Dataset):
         if missing_columns:
             raise ValueError(f"CSV is missing required columns: {sorted(missing_columns)}")
 
-        self.transform = transform or (get_train_transforms() if train else get_eval_transforms())
+        self.transform = transform or (
+            get_train_transforms(aug_policy=aug_policy) if train else get_eval_transforms()
+        )
 
     def __len__(self) -> int:
         return len(self.data)

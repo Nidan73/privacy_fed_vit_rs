@@ -18,6 +18,9 @@ OVERRIDE_FIELDS = {
     "lr": "learning_rate",
     "weight_decay": "weight_decay",
     "seed": "seed",
+    "aug_policy": "aug_policy",
+    "label_smoothing": "label_smoothing",
+    "scheduler": "scheduler",
 }
 
 
@@ -154,6 +157,17 @@ def main() -> None:
     parser.add_argument("--lr", type=float, help="Override configured learning rate.")
     parser.add_argument("--weight_decay", type=float, help="Override configured weight decay.")
     parser.add_argument("--seed", type=int, help="Override configured random seed.")
+    parser.add_argument(
+        "--aug_policy",
+        choices=["basic", "remote_sensing_strong"],
+        help="Override centralized training augmentation policy.",
+    )
+    parser.add_argument("--label_smoothing", type=float, help="Override label smoothing value.")
+    parser.add_argument(
+        "--scheduler",
+        choices=["none", "cosine"],
+        help="Override learning-rate scheduler.",
+    )
     parser.add_argument(
         "--output_suffix",
         help="Append a suffix to experiment outputs, for example --output_suffix 10ep.",

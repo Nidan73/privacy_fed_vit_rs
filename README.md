@@ -81,6 +81,12 @@ python src/sanity_check_splits.py --train_csv data/splits/nwpu/train.csv --val_c
 python src/run_experiment.py --experiment_id N2D01_fedavg_dirichlet01_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
 ```
 
+`N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu` is the severe privacy-aware non-IID NWPU experiment. It uses the same `alpha=0.1` client split as `N2D01`, with selected-layer chunked CKKS applied only to the classifier head (`head.weight` and `head.bias`). The direct comparison target for privacy overhead and accuracy impact is `N2D01_fedavg_dirichlet01_vit_base_nwpu`.
+
+```bash
+python src/run_experiment.py --experiment_id N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu --global_rounds 20 --local_epochs 1 --lr 5e-5 --aug_policy remote_sensing_strong --label_smoothing 0.1 --scheduler cosine --seed 42 --output_suffix 20r1e_lr5e5_aug_ls_cosine_s42
+```
+
 ## Data Policy
 
 Raw datasets are not committed to GitHub. The repository keeps source code, notebooks, reproducible split CSV files, metric summaries, and paper draft folders. Downloaded images, processed data, model checkpoints, caches, and large generated logs are ignored by `.gitignore`.

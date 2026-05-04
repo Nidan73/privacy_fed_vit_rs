@@ -262,5 +262,32 @@ experiments:
     output_dir: experiments/fedavg_ckks_noniid/N4_fedavg_ckks_noniid_vit_base_nwpu
     metrics_path: results/metrics/N4_fedavg_ckks_noniid_vit_base_nwpu_metrics.json
 
+  N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu:
+    experiment_id: N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu
+    experiment_name: "N4D01: FedAvg + ViT-Base + CKKS on NWPU-RESISC45, Dirichlet alpha=0.1 clients"
+    dataset: NWPU-RESISC45
+    train_csv: data/splits/nwpu/train.csv
+    val_csv: data/splits/nwpu/val.csv
+    test_csv: data/splits/nwpu/test.csv
+    client_split_dir: data/splits/nwpu/clients_dirichlet_alpha01
+    model_name: vit_base_patch16_224
+    pretrained: true
+    fl_method: fedavg
+    privacy: selected_layer_ckks
+    epochs: 20
+    global_rounds: 20
+    local_epochs: 1
+    num_clients: 3
+    batch_size: 16
+    learning_rate: 5.0e-5
+    weight_decay: 1.0e-4
+    aug_policy: remote_sensing_strong
+    label_smoothing: 0.1
+    scheduler: cosine
+    seed: 42
+    num_workers: 0
+    output_dir: experiments/fedavg_ckks_dirichlet/N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu
+    metrics_path: results/metrics/N4D01_fedavg_ckks_dirichlet01_vit_base_nwpu_metrics.json
+
 # Optional debug-only D0 centralized ViT-Tiny is intentionally not included in
 # the main paper ablation list. Add it only after explicit approval.

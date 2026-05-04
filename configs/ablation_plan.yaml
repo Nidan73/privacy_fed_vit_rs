@@ -90,5 +90,120 @@ experiments:
     output_dir: experiments/fedavg_ckks_noniid/A4_fedavg_ckks_noniid_vit_base
     metrics_path: results/metrics/A4_fedavg_ckks_noniid_vit_base_metrics.json
 
+  N0_centralized_vit_base_nwpu:
+    experiment_id: N0_centralized_vit_base_nwpu
+    experiment_name: "N0: Centralized ViT-Base on NWPU-RESISC45"
+    dataset: NWPU-RESISC45
+    train_csv: data/splits/nwpu/train.csv
+    val_csv: data/splits/nwpu/val.csv
+    test_csv: data/splits/nwpu/test.csv
+    model_name: vit_base_patch16_224
+    pretrained: true
+    fl_method: none
+    privacy: none
+    epochs: 10
+    batch_size: 16
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-4
+    seed: 42
+    output_dir: experiments/centralized/N0_centralized_vit_base_nwpu
+    metrics_path: results/metrics/N0_centralized_vit_base_nwpu_metrics.json
+
+  N1_fedavg_iid_vit_base_nwpu:
+    experiment_id: N1_fedavg_iid_vit_base_nwpu
+    experiment_name: "N1: FedAvg + ViT-Base on NWPU-RESISC45, IID clients"
+    dataset: NWPU-RESISC45
+    train_csv: data/splits/nwpu/train.csv
+    val_csv: data/splits/nwpu/val.csv
+    test_csv: data/splits/nwpu/test.csv
+    client_split_dir: data/splits/nwpu/clients_iid
+    model_name: vit_base_patch16_224
+    pretrained: true
+    fl_method: fedavg
+    privacy: none
+    epochs: 10
+    global_rounds: 10
+    local_epochs: 1
+    num_clients: 3
+    batch_size: 16
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-4
+    seed: 42
+    num_workers: 0
+    output_dir: experiments/fedavg_iid/N1_fedavg_iid_vit_base_nwpu
+    metrics_path: results/metrics/N1_fedavg_iid_vit_base_nwpu_metrics.json
+
+  N2_fedavg_noniid_vit_base_nwpu:
+    experiment_id: N2_fedavg_noniid_vit_base_nwpu
+    experiment_name: "N2: FedAvg + ViT-Base on NWPU-RESISC45, non-IID clients"
+    dataset: NWPU-RESISC45
+    train_csv: data/splits/nwpu/train.csv
+    val_csv: data/splits/nwpu/val.csv
+    test_csv: data/splits/nwpu/test.csv
+    client_split_dir: data/splits/nwpu/clients_noniid
+    model_name: vit_base_patch16_224
+    pretrained: true
+    fl_method: fedavg
+    privacy: none
+    epochs: 10
+    global_rounds: 10
+    local_epochs: 1
+    num_clients: 3
+    batch_size: 16
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-4
+    seed: 42
+    num_workers: 0
+    output_dir: experiments/fedavg_noniid/N2_fedavg_noniid_vit_base_nwpu
+    metrics_path: results/metrics/N2_fedavg_noniid_vit_base_nwpu_metrics.json
+
+  N3_fedavg_ckks_iid_vit_base_nwpu:
+    experiment_id: N3_fedavg_ckks_iid_vit_base_nwpu
+    experiment_name: "N3: FedAvg + ViT-Base + CKKS on NWPU-RESISC45, IID clients"
+    dataset: NWPU-RESISC45
+    train_csv: data/splits/nwpu/train.csv
+    val_csv: data/splits/nwpu/val.csv
+    test_csv: data/splits/nwpu/test.csv
+    client_split_dir: data/splits/nwpu/clients_iid
+    model_name: vit_base_patch16_224
+    pretrained: true
+    fl_method: fedavg
+    privacy: selected_layer_ckks
+    epochs: 10
+    global_rounds: 10
+    local_epochs: 1
+    num_clients: 3
+    batch_size: 16
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-4
+    seed: 42
+    num_workers: 0
+    output_dir: experiments/fedavg_ckks_iid/N3_fedavg_ckks_iid_vit_base_nwpu
+    metrics_path: results/metrics/N3_fedavg_ckks_iid_vit_base_nwpu_metrics.json
+
+  N4_fedavg_ckks_noniid_vit_base_nwpu:
+    experiment_id: N4_fedavg_ckks_noniid_vit_base_nwpu
+    experiment_name: "N4: FedAvg + ViT-Base + CKKS on NWPU-RESISC45, non-IID clients"
+    dataset: NWPU-RESISC45
+    train_csv: data/splits/nwpu/train.csv
+    val_csv: data/splits/nwpu/val.csv
+    test_csv: data/splits/nwpu/test.csv
+    client_split_dir: data/splits/nwpu/clients_noniid
+    model_name: vit_base_patch16_224
+    pretrained: true
+    fl_method: fedavg
+    privacy: selected_layer_ckks
+    epochs: 10
+    global_rounds: 10
+    local_epochs: 1
+    num_clients: 3
+    batch_size: 16
+    learning_rate: 1.0e-4
+    weight_decay: 1.0e-4
+    seed: 42
+    num_workers: 0
+    output_dir: experiments/fedavg_ckks_noniid/N4_fedavg_ckks_noniid_vit_base_nwpu
+    metrics_path: results/metrics/N4_fedavg_ckks_noniid_vit_base_nwpu_metrics.json
+
 # Optional debug-only D0 centralized ViT-Tiny is intentionally not included in
 # the main paper ablation list. Add it only after explicit approval.

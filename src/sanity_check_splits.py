@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -71,12 +72,73 @@ def per_class_counts(df: pd.DataFrame) -> dict[str, int]:
     }
 
 
-def count_mismatches(counts: dict[str, int], expected_count: int) -> dict[str, int]:
+def count_mismatches(
+    counts: dict[str, int],
+    expected_count: int,
+    expected_classes: set[str],
+) -> dict[str, int]:
     return {
-        class_name: count
-        for class_name, count in counts.items()
-        if count != expected_count
+        class_name: counts.get(class_name, 0)
+        for class_name in sorted(expected_classes)
+        if counts.get(class_name, 0) != expected_count
     }
+
+
+def class_to_label_mapping(df: pd.DataFrame) -> dict[str, int]:
+    mapping = {}
+    for row in df[["class_name", "label"]].drop_duplicates().itertuples(index=False):
+        class_name = str(row.class_name)
+        label = int(row.label)
+        if class_name in mapping and mapping[class_name] != label:
+            raise ValueError(
+                f"Inconsistent mapping inside split for class {class_name}: "
+                f"{mapping[class_name]} vs {label}"
+            )
+        mapping[class_name] = label
+    return dict(sorted(mapping.items()))
+
+
+def infer_report_prefix(train_csv: Path) -> str:
+    default_train_csv = resolve_path("data/splits/train.csv")
+    if train_csv.resolve() == default_train_csv.resolve():
+        return ""
+
+    dataset_name = train_csv.parent.name
+    safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", dataset_name).strip("_").lower()
+    return f"{safe_name}_" if safe_name else ""
+
+
+def client_internal_duplicate_counts(
+    clients: list[tuple[int, Path, pd.DataFrame]]
+) -> dict[str, int]:
+    return {
+        f"client_{client_id}": len(duplicate_paths(df))
+        for client_id, _, df in clients
+    }
+
+
+def client_missing_path_counts(
+    clients: list[tuple[int, Path, pd.DataFrame]]
+) -> dict[str, int]:
+    return {
+        f"client_{client_id}": len(check_all_paths_exist(df))
+        for client_id, _, df in clients
+    }
+
+
+def client_mapping_consistent(
+    clients: list[tuple[int, Path, pd.DataFrame]],
+    reference_label_mapping: dict[int, str],
+    reference_class_mapping: dict[str, int],
+) -> bool:
+    for _, _, df in clients:
+        for label, class_name in label_mapping(df).items():
+            if reference_label_mapping.get(label) != class_name:
+                return False
+        for class_name, label in class_to_label_mapping(df).items():
+            if reference_class_mapping.get(class_name) != label:
+                return False
+    return True
 
 
 def read_client_csvs(client_dir: Path, prefix: str) -> list[tuple[int, Path, pd.DataFrame]]:
@@ -201,17 +263,35 @@ def inspect_evaluation_config() -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Check split and client partition leakage for UCMerced.")
+    parser = argparse.ArgumentParser(description="Check split and client partition leakage.")
     parser.add_argument("--splits_dir", default="data/splits")
+    parser.add_argument("--train_csv", help="Train split CSV. Defaults to --splits_dir/train.csv.")
+    parser.add_argument("--val_csv", help="Validation split CSV. Defaults to --splits_dir/val.csv.")
+    parser.add_argument("--test_csv", help="Test split CSV. Defaults to --splits_dir/test.csv.")
+    parser.add_argument("--iid_dir", help="IID client CSV directory. Defaults to --splits_dir/clients_iid.")
+    parser.add_argument("--noniid_dir", help="Non-IID client CSV directory. Defaults to --splits_dir/clients_noniid.")
+    parser.add_argument("--expected_train_per_class", type=int, default=EXPECTED_TRAIN_PER_CLASS)
+    parser.add_argument("--expected_val_per_class", type=int, default=EXPECTED_VAL_PER_CLASS)
+    parser.add_argument("--expected_test_per_class", type=int, default=EXPECTED_TEST_PER_CLASS)
     parser.add_argument("--results_dir", default="results")
+    parser.add_argument(
+        "--report_prefix",
+        help="Optional prefix for saved sanity report/table filenames. Inferred for dataset-specific splits.",
+    )
     args = parser.parse_args()
 
     splits_dir = resolve_path(args.splits_dir)
     results_dir = resolve_path(args.results_dir)
+    train_csv = resolve_path(args.train_csv) if args.train_csv else splits_dir / "train.csv"
+    val_csv = resolve_path(args.val_csv) if args.val_csv else splits_dir / "val.csv"
+    test_csv = resolve_path(args.test_csv) if args.test_csv else splits_dir / "test.csv"
+    iid_dir = resolve_path(args.iid_dir) if args.iid_dir else splits_dir / "clients_iid"
+    noniid_dir = resolve_path(args.noniid_dir) if args.noniid_dir else splits_dir / "clients_noniid"
+    report_prefix = args.report_prefix if args.report_prefix is not None else infer_report_prefix(train_csv)
 
-    train_df = load_split_csv(splits_dir / "train.csv", "train")
-    val_df = load_split_csv(splits_dir / "val.csv", "val")
-    test_df = load_split_csv(splits_dir / "test.csv", "test")
+    train_df = load_split_csv(train_csv, "train")
+    val_df = load_split_csv(val_csv, "val")
+    test_df = load_split_csv(test_csv, "test")
 
     split_dfs = {"train": train_df, "val": val_df, "test": test_df}
     split_paths = {name: path_set(df) for name, df in split_dfs.items()}
@@ -226,8 +306,13 @@ def main() -> None:
     }
 
     mappings = {name: label_mapping(df) for name, df in split_dfs.items()}
+    class_mappings = {name: class_to_label_mapping(df) for name, df in split_dfs.items()}
     reference_mapping = mappings["train"]
+    reference_class_mapping = class_mappings["train"]
     mapping_consistent = all(mapping == reference_mapping for mapping in mappings.values())
+    class_mapping_consistent = all(
+        mapping == reference_class_mapping for mapping in class_mappings.values()
+    )
     valid_labels = set(reference_mapping)
     invalid_labels = {
         name: validate_label_range(df, valid_labels, name)
@@ -235,14 +320,27 @@ def main() -> None:
     }
 
     class_counts = {name: per_class_counts(df) for name, df in split_dfs.items()}
+    expected_classes = set().union(*(set(counts) for counts in class_counts.values()))
     class_count_mismatches = {
-        "train": count_mismatches(class_counts["train"], EXPECTED_TRAIN_PER_CLASS),
-        "val": count_mismatches(class_counts["val"], EXPECTED_VAL_PER_CLASS),
-        "test": count_mismatches(class_counts["test"], EXPECTED_TEST_PER_CLASS),
+        "train": count_mismatches(
+            class_counts["train"],
+            args.expected_train_per_class,
+            expected_classes,
+        ),
+        "val": count_mismatches(
+            class_counts["val"],
+            args.expected_val_per_class,
+            expected_classes,
+        ),
+        "test": count_mismatches(
+            class_counts["test"],
+            args.expected_test_per_class,
+            expected_classes,
+        ),
     }
 
-    iid_clients = read_client_csvs(splits_dir / "clients_iid", "IID")
-    noniid_clients = read_client_csvs(splits_dir / "clients_noniid", "non-IID")
+    iid_clients = read_client_csvs(iid_dir, "IID")
+    noniid_clients = read_client_csvs(noniid_dir, "non-IID")
     iid_report = check_client_partition(
         iid_clients,
         "IID",
@@ -262,6 +360,14 @@ def main() -> None:
     noniid_rows = client_distribution_rows(noniid_clients, "noniid")
     print_distribution_table(iid_rows, "IID Per-Client Class Distribution")
     print_distribution_table(noniid_rows, "Non-IID Per-Client Class Distribution")
+    iid_duplicate_counts = client_internal_duplicate_counts(iid_clients)
+    noniid_duplicate_counts = client_internal_duplicate_counts(noniid_clients)
+    iid_missing_path_counts = client_missing_path_counts(iid_clients)
+    noniid_missing_path_counts = client_missing_path_counts(noniid_clients)
+    client_label_mapping_consistent = (
+        client_mapping_consistent(iid_clients, reference_mapping, reference_class_mapping)
+        and client_mapping_consistent(noniid_clients, reference_mapping, reference_class_mapping)
+    )
 
     evaluation_config = inspect_evaluation_config()
     warnings = []
@@ -273,10 +379,16 @@ def main() -> None:
         warnings.append("One or more image paths do not exist on disk.")
     if any(invalid_labels.values()):
         warnings.append("Invalid labels found outside the train label range.")
-    if not mapping_consistent:
+    if not mapping_consistent or not class_mapping_consistent:
         warnings.append("class_name/label mapping is inconsistent across splits.")
     if any(class_count_mismatches.values()):
-        warnings.append("Per-class split counts do not match expected UCMerced 70/15/15 counts.")
+        warnings.append("Per-class split counts do not match expected counts.")
+    if any(iid_duplicate_counts.values()) or any(noniid_duplicate_counts.values()):
+        warnings.append("Duplicate image_path values found inside one or more client CSVs.")
+    if any(iid_missing_path_counts.values()) or any(noniid_missing_path_counts.values()):
+        warnings.append("One or more client image paths do not exist on disk.")
+    if not client_label_mapping_consistent:
+        warnings.append("class_name/label mapping is inconsistent in one or more client CSVs.")
     if not iid_report["covers_train_exactly_once"]:
         warnings.append("IID clients do not cover train.csv exactly once.")
     if not noniid_report["covers_train_exactly_once"]:
@@ -290,18 +402,39 @@ def main() -> None:
 
     report = {
         "split_csvs_exist": True,
+        "train_csv": train_csv.as_posix(),
+        "val_csv": val_csv.as_posix(),
+        "test_csv": test_csv.as_posix(),
+        "iid_dir": iid_dir.as_posix(),
+        "noniid_dir": noniid_dir.as_posix(),
+        "expected_per_class_counts": {
+            "train": args.expected_train_per_class,
+            "val": args.expected_val_per_class,
+            "test": args.expected_test_per_class,
+        },
         "split_row_counts": {name: len(df) for name, df in split_dfs.items()},
         "duplicate_paths_inside_splits": {name: len(paths) for name, paths in duplicate_report.items()},
         "overlap_counts": {name: len(paths) for name, paths in overlap_report.items()},
         "all_image_paths_exist": {name: len(paths) == 0 for name, paths in missing_paths.items()},
         "missing_image_path_counts": {name: len(paths) for name, paths in missing_paths.items()},
         "label_mapping_consistent": mapping_consistent,
+        "class_mapping_consistent": class_mapping_consistent,
         "label_mapping": reference_mapping,
+        "class_to_label_mapping": reference_class_mapping,
         "invalid_labels": invalid_labels,
         "class_counts": class_counts,
         "class_count_mismatches": class_count_mismatches,
         "iid_clients": iid_report,
         "noniid_clients": noniid_report,
+        "client_duplicate_paths_inside_csv": {
+            "iid": iid_duplicate_counts,
+            "noniid": noniid_duplicate_counts,
+        },
+        "client_missing_image_path_counts": {
+            "iid": iid_missing_path_counts,
+            "noniid": noniid_missing_path_counts,
+        },
+        "client_label_mapping_consistent": client_label_mapping_consistent,
         "evaluation_config": evaluation_config,
         "warnings": warnings,
         "passed": not warnings,
@@ -312,21 +445,28 @@ def main() -> None:
     metrics_dir.mkdir(parents=True, exist_ok=True)
     tables_dir.mkdir(parents=True, exist_ok=True)
 
-    report_path = metrics_dir / "split_sanity_report.json"
+    report_path = metrics_dir / f"{report_prefix}split_sanity_report.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    pd.DataFrame(iid_rows).to_csv(tables_dir / "iid_client_class_distribution.csv", index=False)
-    pd.DataFrame(noniid_rows).to_csv(tables_dir / "noniid_client_class_distribution.csv", index=False)
+    iid_table_path = tables_dir / f"{report_prefix}iid_client_class_distribution.csv"
+    noniid_table_path = tables_dir / f"{report_prefix}noniid_client_class_distribution.csv"
+    pd.DataFrame(iid_rows).to_csv(iid_table_path, index=False)
+    pd.DataFrame(noniid_rows).to_csv(noniid_table_path, index=False)
 
     print("\nSplit Sanity Summary")
     print("====================")
     print(f"train/val overlap: {len(overlap_report['train_val'])}")
     print(f"train/test overlap: {len(overlap_report['train_test'])}")
     print(f"val/test overlap: {len(overlap_report['val_test'])}")
+    print(f"Duplicate paths inside splits: { {name: len(paths) for name, paths in duplicate_report.items()} }")
+    print(f"All image paths exist: { {name: len(paths) == 0 for name, paths in missing_paths.items()} }")
+    print(f"Label mapping consistent: {mapping_consistent and class_mapping_consistent}")
     print(f"IID train-only: {iid_report['train_only']}")
     print(f"IID covers train exactly once: {iid_report['covers_train_exactly_once']}")
+    print(f"IID no val/test images: {iid_report['no_val_test_images']}")
     print(f"Non-IID train-only: {noniid_report['train_only']}")
     print(f"Non-IID covers train exactly once: {noniid_report['covers_train_exactly_once']}")
+    print(f"Non-IID no val/test images: {noniid_report['no_val_test_images']}")
     print(f"A0 uses configured test_csv: {evaluation_config['a0_uses_configured_test_csv']}")
     print(f"A1 uses configured test_csv: {evaluation_config['a1_uses_configured_test_csv']}")
     print(f"A1 uses configured val_csv: {evaluation_config['a1_uses_configured_val_csv']}")
@@ -335,8 +475,8 @@ def main() -> None:
     for warning in warnings:
         print(f"- {warning}")
     print(f"\nSaved report: {report_path}")
-    print(f"Saved IID table: {tables_dir / 'iid_client_class_distribution.csv'}")
-    print(f"Saved non-IID table: {tables_dir / 'noniid_client_class_distribution.csv'}")
+    print(f"Saved IID table: {iid_table_path}")
+    print(f"Saved non-IID table: {noniid_table_path}")
 
     if warnings:
         raise SystemExit(1)

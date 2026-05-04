@@ -7,9 +7,10 @@ This repository contains the code scaffold and dataset preparation utilities for
 - Backbone: ViT-Base
 - Federated learning method: FedAvg
 - Privacy mechanism: CKKS-based secure aggregation
-- Dataset split: 70% train, 15% validation, 15% test
+- UCMerced split: 70% train, 15% validation, 15% test
+- NWPU-RESISC45 split: 20% train, 10% validation, 70% test
 - First dataset: UCMerced Land Use
-- Later dataset: NWPU-RESISC45
+- Second dataset: NWPU-RESISC45
 
 ## Evaluation Plan
 
@@ -27,8 +28,30 @@ This repository contains the code scaffold and dataset preparation utilities for
 - Dataset checked: 21 classes, 2,100 images, 100 images per class.
 - Stratified train/validation/test split created: 1,470 / 315 / 315 images.
 - IID and simple class-skewed non-IID client partitions created for 3 clients.
+- UCMerced A0-A4 experiment code paths have been exercised for the controlled first benchmark.
+- NWPU full training has not been started.
 
-No model training has been started.
+## NWPU-RESISC45 Benchmark
+
+NWPU-RESISC45 is the second benchmark for this project. It is larger and generally harder than UCMerced, with 45 scene classes and 31,500 RGB remote sensing images, so expected accuracy may be lower than the UCMerced results.
+
+UCMerced remains the controlled first benchmark. NWPU-RESISC45 is the stronger second benchmark used to test whether the same ViT-Base, FedAvg, and selected-layer chunked CKKS protocol scales to a larger remote sensing scene classification dataset.
+
+NWPU uses a 20% train, 10% validation, and 70% test split:
+
+- Train: 6,300 images, 140 per class
+- Validation: 3,150 images, 70 per class
+- Test: 22,050 images, 490 per class
+
+Prepare NWPU-RESISC45 without starting full training:
+
+```bash
+python src/download_nwpu_hf.py --output_dir data/raw/nwpu_resisc45
+python src/dataset_check.py --data_dir data/raw/nwpu_resisc45 --output_csv results/metrics/nwpu_dataset_summary.csv
+python src/split_data.py --data_dir data/raw/nwpu_resisc45 --output_dir data/splits/nwpu --train_ratio 0.20 --val_ratio 0.10 --test_ratio 0.70 --seed 42
+python src/client_partition.py --train_csv data/splits/nwpu/train.csv --num_clients 3 --output_dir data/splits/nwpu
+python src/sanity_check_splits.py --train_csv data/splits/nwpu/train.csv --val_csv data/splits/nwpu/val.csv --test_csv data/splits/nwpu/test.csv --iid_dir data/splits/nwpu/clients_iid --noniid_dir data/splits/nwpu/clients_noniid --expected_train_per_class 140 --expected_val_per_class 70 --expected_test_per_class 490
+```
 
 ## Data Policy
 
@@ -41,6 +64,9 @@ Tracked data artifacts:
 - `data/splits/test.csv`
 - `data/splits/clients_iid/*.csv`
 - `data/splits/clients_noniid/*.csv`
+- `data/splits/nwpu/*.csv`
+- `data/splits/nwpu/clients_iid/*.csv`
+- `data/splits/nwpu/clients_noniid/*.csv`
 - `results/metrics/dataset_summary.csv`
 
 ## Reproduce Current Dataset State

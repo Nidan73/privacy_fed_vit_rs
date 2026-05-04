@@ -1,0 +1,21 @@
+{
+  "experiment_id": "A0_centralized_vit_base",
+  "dry_run": false,
+  "model_name": "vit_base_patch16_224",
+  "dataset": "UCMerced Land Use",
+  "num_classes": 21,
+  "model_parameter_count": 85814805,
+  "cuda_available": true,
+  "amp_enabled": true,
+  "best_epoch": 4,
+  "best_val_accuracy": 0.9555555555555556,
+  "training_time_sec": 37.61920119996648,
+  "epoch_log_path": "E:\\VIT-FL\\privacy_fed_vit_rs\\results\\logs\\A0_centralized_vit_base_epoch_log.csv",
+  "checkpoint_path": "E:\\VIT-FL\\privacy_fed_vit_rs\\experiments\\centralized\\A0_centralized_vit_base\\checkpoints\\best.pt",
+  "test_metrics": {
+    "loss": 0.19134593728970412,
+    "accuracy": 0.9365079365079365,
+    "macro_f1": 0.9380375737756953,
+    "weighted_f1": 0.9380375737756955
+  }
+}

@@ -91,6 +91,7 @@ def add_box(
     text: str,
     facecolor: str = "#F7F7F7",
     edgecolor: str = "#333333",
+    fontsize: float | None = None,
 ) -> None:
     box = FancyBboxPatch(
         xy,
@@ -109,6 +110,7 @@ def add_box(
         ha="center",
         va="center",
         linespacing=1.15,
+        fontsize=fontsize,
     )
 
 
@@ -132,9 +134,9 @@ def add_arrow(
 
 
 def figure_framework_overview() -> None:
-    fig, ax = plt.subplots(figsize=(7.2, 4.2))
-    ax.set_xlim(0, 11)
-    ax.set_ylim(0, 6)
+    fig, ax = plt.subplots(figsize=(7.2, 3.25))
+    ax.set_xlim(0, 13.6)
+    ax.set_ylim(0, 4.6)
     ax.axis("off")
 
     blue = "#DCEBFA"
@@ -143,50 +145,49 @@ def figure_framework_overview() -> None:
     gray = "#F4F4F4"
     purple = "#EFE7F7"
 
-    add_box(ax, (0.2, 3.9), 1.45, 0.85, "Dataset\nNWPU / UCM", blue)
-    add_box(ax, (0.2, 2.55), 1.45, 0.85, "Train / Val /\nTest split", blue)
-    add_arrow(ax, (0.93, 3.9), (0.93, 3.4))
+    add_box(ax, (0.18, 2.7), 1.15, 0.56, "Dataset\nNWPU/UCM", blue, fontsize=7)
+    add_box(ax, (0.18, 1.75), 1.15, 0.56, "Train/val/\ntest split", blue, fontsize=7)
+    add_arrow(ax, (0.76, 2.7), (0.76, 2.31))
 
-    for y, label in zip((4.6, 3.55, 2.5), ("Client 1", "Client 2", "Client 3")):
-        add_box(ax, (2.0, y), 1.25, 0.62, f"{label}\nlocal data", gray)
-        add_box(ax, (3.55, y), 1.35, 0.62, "ViT-Base\nlocal train", green)
-        add_arrow(ax, (3.25, y + 0.31), (3.55, y + 0.31))
-    add_arrow(ax, (1.65, 2.98), (2.0, 2.81))
-    add_arrow(ax, (1.65, 2.98), (2.0, 3.86))
-    add_arrow(ax, (1.65, 2.98), (2.0, 4.91))
+    client_rows = [(3.35, "Client 1"), (2.35, "Client 2"), (1.35, "Client 3")]
+    for y, label in client_rows:
+        add_box(ax, (1.82, y), 1.3, 0.5, f"{label}\nlocal train", green, fontsize=6.9)
+        add_arrow(ax, (3.12, y + 0.25), (4.35, 2.34), "#333333", rad=0.04 if y > 2.35 else -0.04)
 
-    add_box(ax, (5.35, 4.2), 1.35, 0.75, "Plaintext\nFedAvg path", green)
-    add_box(ax, (7.05, 4.2), 1.55, 0.75, "Backbone\nparameters", green)
-    add_arrow(ax, (4.9, 4.9), (5.35, 4.58), "#2A7F62", -0.08)
-    add_arrow(ax, (4.9, 3.86), (5.35, 4.58), "#2A7F62")
-    add_arrow(ax, (4.9, 2.81), (5.35, 4.58), "#2A7F62", 0.08)
-    add_arrow(ax, (6.7, 4.58), (7.05, 4.58), "#2A7F62")
+    add_arrow(ax, (1.33, 2.03), (1.82, 2.6), rad=0.02)
 
-    add_box(ax, (5.05, 2.05), 1.35, 0.75, "Select\nhead / norm", orange)
-    add_box(ax, (6.75, 2.05), 1.35, 0.75, "Flatten\nand chunk", orange)
-    add_box(ax, (8.45, 2.05), 1.3, 0.75, "CKKS\nencrypt", orange)
-    add_box(ax, (6.75, 0.85), 1.35, 0.75, "Encrypted\nweighted avg", orange)
-    add_box(ax, (8.45, 0.85), 1.3, 0.75, "Decrypt\nreshape", orange)
-    add_arrow(ax, (4.9, 4.9), (5.05, 2.42), "#C65F21", 0.18)
-    add_arrow(ax, (4.9, 3.86), (5.05, 2.42), "#C65F21")
-    add_arrow(ax, (4.9, 2.81), (5.05, 2.42), "#C65F21", -0.08)
-    add_arrow(ax, (6.4, 2.42), (6.75, 2.42), "#C65F21")
-    add_arrow(ax, (8.1, 2.42), (8.45, 2.42), "#C65F21")
-    add_arrow(ax, (9.1, 2.05), (7.42, 1.6), "#C65F21", -0.2)
-    add_arrow(ax, (8.1, 1.22), (8.45, 1.22), "#C65F21")
+    add_box(ax, (4.35, 2.05), 0.95, 0.58, "Client\nupdates", gray, fontsize=7)
 
-    add_box(ax, (9.65, 3.2), 1.15, 0.8, "Global\nViT model", purple)
-    add_box(ax, (9.65, 4.6), 1.15, 0.7, "Test\nevaluation", purple)
-    add_arrow(ax, (8.6, 4.58), (9.65, 3.75), "#2A7F62", -0.05)
-    add_arrow(ax, (9.75, 1.22), (10.25, 3.2), "#C65F21", -0.12)
-    add_arrow(ax, (10.22, 4.0), (10.22, 4.6), "#333333")
+    ax.text(5.65, 3.66, "Plaintext backbone path", color="#2A7F62", fontsize=7, fontweight="bold")
+    add_box(ax, (5.65, 3.0), 1.1, 0.52, "Backbone\nparams", green, fontsize=7)
+    add_box(ax, (7.15, 3.0), 1.1, 0.52, "Weighted\nFedAvg", green, fontsize=7)
+    add_arrow(ax, (5.3, 2.47), (5.65, 3.26), "#2A7F62", rad=-0.1)
+    add_arrow(ax, (6.75, 3.26), (7.15, 3.26), "#2A7F62")
+
+    ax.text(5.65, 1.68, "Selected-layer CKKS path", color="#C65F21", fontsize=7, fontweight="bold")
+    add_box(ax, (5.65, 0.95), 1.1, 0.52, "Select\nhead/norm", orange, fontsize=6.7)
+    add_box(ax, (7.15, 0.95), 1.1, 0.52, "Flatten\nchunk", orange, fontsize=6.7)
+    add_box(ax, (8.65, 0.95), 1.1, 0.52, "CKKS\nencrypt", orange, fontsize=6.7)
+    add_box(ax, (10.15, 0.9), 1.1, 0.62, "Encrypted\nweighted\navg", orange, fontsize=6.4)
+    add_box(ax, (11.65, 0.95), 1.1, 0.52, "Decrypt\nreshape", orange, fontsize=6.7)
+    add_arrow(ax, (5.3, 2.18), (5.65, 1.21), "#C65F21", rad=0.1)
+    add_arrow(ax, (6.75, 1.21), (7.15, 1.21), "#C65F21")
+    add_arrow(ax, (8.25, 1.21), (8.65, 1.21), "#C65F21")
+    add_arrow(ax, (9.75, 1.21), (10.15, 1.21), "#C65F21")
+    add_arrow(ax, (11.25, 1.21), (11.65, 1.21), "#C65F21")
+
+    add_box(ax, (12.15, 2.18), 1.0, 0.58, "Global\nViT", purple)
+    add_box(ax, (12.15, 3.35), 1.0, 0.52, "Test\neval", purple)
+    add_arrow(ax, (8.25, 3.26), (12.15, 2.55), "#2A7F62", rad=-0.08)
+    add_arrow(ax, (12.75, 1.47), (12.65, 2.18), "#C65F21", rad=-0.08)
+    add_arrow(ax, (12.65, 2.76), (12.65, 3.35), "#333333")
 
     legend_handles = [
-        Line2D([0], [0], color="#2A7F62", lw=2, label="Plaintext FedAvg backbone"),
-        Line2D([0], [0], color="#C65F21", lw=2, label="Selected-layer CKKS"),
+        Line2D([0], [0], color="#2A7F62", lw=2, label="Plaintext FedAvg"),
+        Line2D([0], [0], color="#C65F21", lw=2, label="Chunked CKKS"),
     ]
-    ax.legend(handles=legend_handles, loc="lower left", frameon=False)
-    ax.set_title("Proposed selected-layer CKKS federated ViT framework", pad=4)
+    ax.legend(handles=legend_handles, loc="lower left", frameon=False, ncol=2)
+    ax.set_title("Selected-layer CKKS federated ViT framework", pad=3)
     save_figure(fig, "fig_framework_overview")
 
 
@@ -201,7 +202,7 @@ def figure_dataset_split_distribution() -> None:
         dtype=float,
     )
 
-    fig, ax = plt.subplots(figsize=(5.2, 3.1))
+    fig, ax = plt.subplots(figsize=(5.0, 3.0))
     x = np.arange(len(datasets))
     width = 0.23
     colors = ["#4C78A8", "#72B7B2", "#F58518"]
@@ -211,10 +212,13 @@ def figure_dataset_split_distribution() -> None:
 
     ax.set_xticks(x)
     ax.set_xticklabels(datasets)
-    ax.set_ylabel("Number of images")
+    ax.set_yscale("log")
+    ax.set_yticks([100, 300, 1000, 3000, 10000, 30000])
+    ax.set_yticklabels(["100", "300", "1k", "3k", "10k", "30k"])
+    ax.set_ylabel("Number of images (log scale)")
     ax.set_title("Dataset split distribution")
     ax.legend(frameon=False, ncol=3, loc="upper left")
-    ax.set_ylim(0, 24500)
+    ax.set_ylim(100, 36000)
     ax.grid(axis="y", alpha=0.25)
     fig.tight_layout()
     save_figure(fig, "fig_dataset_split_distribution")
@@ -246,6 +250,27 @@ def client_matrix(client_dir: Path, class_order: list[str]) -> np.ndarray:
     return np.asarray(rows, dtype=float)
 
 
+def client_summary_rows(matrix: np.ndarray) -> list[list[str]]:
+    rows = []
+    num_classes = matrix.shape[1]
+    for client_id, counts in enumerate(matrix):
+        nonzero = counts[counts > 0]
+        per_class_range = "0"
+        if len(nonzero) > 0:
+            per_class_range = f"{int(nonzero.min())}-{int(nonzero.max())}"
+        present = int((counts > 0).sum())
+        rows.append(
+            [
+                f"Client {client_id}",
+                f"{int(counts.sum()):,}",
+                str(present),
+                str(num_classes - present),
+                per_class_range,
+            ]
+        )
+    return rows
+
+
 def figure_client_partition_summary() -> None:
     try:
         class_order = class_order_from_train()
@@ -255,26 +280,59 @@ def figure_client_partition_summary() -> None:
         skip_figure("fig_client_partition_summary", f"missing client partition CSV: {exc}")
         return
 
-    fig, axes = plt.subplots(1, 2, figsize=(7.2, 2.8), sharey=True)
-    matrices = [
-        ("IID clients\nclasses/client: 45, 45, 45", iid),
-        ("Dirichlet alpha=0.1\nclasses/client: 24, 26, 24", alpha01),
-    ]
-    vmax = max(float(iid.max()), float(alpha01.max()))
-    image = None
-    for ax, (title, matrix) in zip(axes, matrices):
-        image = ax.imshow(matrix, aspect="auto", cmap="YlGnBu", vmin=0, vmax=vmax)
-        ax.set_title(title)
-        ax.set_xlabel("Class index (sorted by label)")
-        ax.set_xticks(np.arange(0, len(class_order), 5))
-        ax.set_xticklabels([str(i + 1) for i in range(0, len(class_order), 5)])
-        ax.set_yticks([0, 1, 2])
-        ax.set_yticklabels(["Client 0", "Client 1", "Client 2"])
-    axes[0].set_ylabel("Client")
-    if image is not None:
-        cbar = fig.colorbar(image, ax=axes.ravel().tolist(), shrink=0.82, pad=0.015)
-        cbar.set_label("Samples per class")
-    fig.suptitle("NWPU client label distribution: IID vs severe non-IID", y=1.02)
+    fig = plt.figure(figsize=(7.2, 3.15), constrained_layout=True)
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.55])
+    ax_iid = fig.add_subplot(grid[0, 0])
+    ax_dir = fig.add_subplot(grid[0, 1])
+
+    ax_iid.axis("off")
+    ax_iid.set_title("IID partition\nnear-uniform by design", pad=5, fontsize=8.5)
+    table = ax_iid.table(
+        cellText=client_summary_rows(iid),
+        colLabels=["Client", "Samples", "Classes", "Missing", "Per class"],
+        cellLoc="center",
+        loc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(5.8)
+    table.scale(1.0, 1.28)
+    for (row, _col), cell in table.get_celld().items():
+        cell.set_edgecolor("#D0D0D0")
+        if row == 0:
+            cell.set_facecolor("#E4F3E0")
+            cell.set_text_props(weight="bold")
+        else:
+            cell.set_facecolor("#FAFAFA")
+    ax_iid.text(
+        0.5,
+        0.08,
+        "All clients contain all 45 classes.\nEach class contributes 46-47 train images/client.",
+        transform=ax_iid.transAxes,
+        ha="center",
+        va="bottom",
+        fontsize=5.8,
+        color="#333333",
+    )
+
+    dir_rows = client_summary_rows(alpha01)
+    dir_samples = ", ".join(row[1] for row in dir_rows)
+    dir_classes = ", ".join(row[2] for row in dir_rows)
+    dir_missing = ", ".join(row[3] for row in dir_rows)
+    image = ax_dir.imshow(alpha01, aspect="auto", cmap="YlGnBu", vmin=0, vmax=float(alpha01.max()))
+    ax_dir.set_title(
+        "Dirichlet alpha=0.1 label skew\n"
+        f"samples: {dir_samples} | classes: {dir_classes} | missing: {dir_missing}",
+        pad=5,
+        fontsize=8.0,
+    )
+    ax_dir.set_xlabel("Class index (sorted by label)")
+    ax_dir.set_xticks(np.arange(0, len(class_order), 5))
+    ax_dir.set_xticklabels([str(i + 1) for i in range(0, len(class_order), 5)])
+    ax_dir.set_yticks([0, 1, 2])
+    ax_dir.set_yticklabels(["Client 0", "Client 1", "Client 2"])
+    ax_dir.set_ylabel("Client")
+    cbar = fig.colorbar(image, ax=ax_dir, shrink=0.88, pad=0.018)
+    cbar.set_label("Samples per class")
     save_figure(fig, "fig_client_partition_summary")
 
 
@@ -315,22 +373,24 @@ def figure_nwpu_experiment_comparison() -> None:
         return
 
     colors = {"Centralized": "#8F8F8F", "Plain FedAvg": "#4C78A8", "CKKS": "#F58518"}
+    display_labels = [label.replace("\n", " ") for label in labels]
+    y = np.arange(len(display_labels))[::-1]
     bar_colors = [colors[group] for group in groups]
-    fig, ax = plt.subplots(figsize=(7.2, 3.2))
-    x = np.arange(len(labels))
-    bars = ax.bar(x, accuracies, color=bar_colors, width=0.72)
-    ax.bar_label(bars, labels=[f"{value:.2f}" for value in accuracies], padding=2, fontsize=6)
-    ax.set_ylabel("Test accuracy (%)")
-    ax.set_title("NWPU-RESISC45 experiment comparison")
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=35, ha="right")
-    ax.set_ylim(93.0, 96.0)
-    ax.grid(axis="y", alpha=0.25)
+    fig, ax = plt.subplots(figsize=(5.6, 3.65))
+    bars = ax.barh(y, accuracies, color=bar_colors, height=0.62)
+    for bar, value in zip(bars, accuracies):
+        ax.text(value + 0.025, bar.get_y() + bar.get_height() / 2, f"{value:.2f}", va="center", fontsize=6)
+    ax.set_yticks(y)
+    ax.set_yticklabels(display_labels)
+    ax.set_xlabel("Test accuracy (%)")
+    ax.set_title("NWPU-RESISC45 experiment comparison", pad=22)
+    ax.set_xlim(93.4, 95.45)
+    ax.grid(axis="x", alpha=0.25)
     legend_handles = [
         Line2D([0], [0], marker="s", color="w", markerfacecolor=color, markersize=7, label=label)
         for label, color in colors.items()
     ]
-    ax.legend(handles=legend_handles, frameon=False, ncol=3, loc="upper left")
+    ax.legend(handles=legend_handles, frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.035))
     fig.tight_layout()
     save_figure(fig, "fig_nwpu_experiment_comparison")
 
@@ -398,17 +458,25 @@ def figure_two_seed_stability() -> None:
     width = 0.34
     bars_plain = ax.bar(x - width / 2, means[0], width, yerr=stds[0], capsize=3, label="Plain FedAvg", color="#4C78A8")
     bars_ckks = ax.bar(x + width / 2, means[1], width, yerr=stds[1], capsize=3, label="Head+Norm CKKS", color="#F58518")
-    ax.bar_label(bars_plain, labels=[f"{v:.2f}" for v in means[0]], padding=2, fontsize=6)
-    ax.bar_label(bars_ckks, labels=[f"{v:.2f}" for v in means[1]], padding=2, fontsize=6)
+    for bars, values, errors in ((bars_plain, means[0], stds[0]), (bars_ckks, means[1], stds[1])):
+        for bar, value, error in zip(bars, values, errors):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                value + error + 0.035,
+                f"{value:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=6,
+            )
     ax.set_xticks(x)
     ax.set_xticklabels(["Accuracy", "Macro-F1"])
     ax.set_ylabel("Mean test score (%)")
     ax.set_title("Two-seed stability under Dirichlet alpha=0.1")
-    ax.set_ylim(93.2, 94.5)
+    ax.set_ylim(93.15, 94.62)
     ax.grid(axis="y", alpha=0.25)
     ax.legend(frameon=False, loc="upper left")
-    ax.text(0.02, 0.02, "Error bars: sample std over seeds 42 and 123", transform=ax.transAxes, fontsize=6)
-    fig.tight_layout()
+    fig.text(0.5, 0.02, "Error bars: sample std over seeds 42 and 123", ha="center", fontsize=6)
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
     save_figure(fig, "fig_two_seed_stability")
 
 
@@ -467,41 +535,47 @@ def figure_ckks_scope_overhead() -> None:
         )
 
     if timing_rows:
-        fig, axes = plt.subplots(1, 3, figsize=(7.4, 2.9), gridspec_kw={"width_ratios": [1.0, 0.85, 1.65]})
+        fig = plt.figure(figsize=(6.4, 4.1), constrained_layout=True)
+        grid = fig.add_gridspec(2, 2, height_ratios=[1.0, 1.15])
+        ax_params = fig.add_subplot(grid[0, 0])
+        ax_chunks = fig.add_subplot(grid[0, 1])
+        ax_time = fig.add_subplot(grid[1, :])
     else:
-        fig, axes = plt.subplots(1, 2, figsize=(5.4, 2.9))
+        fig = plt.figure(figsize=(5.2, 2.8), constrained_layout=True)
+        grid = fig.add_gridspec(1, 2)
+        ax_params = fig.add_subplot(grid[0, 0])
+        ax_chunks = fig.add_subplot(grid[0, 1])
+        ax_time = None
 
-    axes[0].bar(scope_labels, params, color=["#8F8F8F", "#F58518", "#E45756"])
-    axes[0].set_title("Encrypted params")
-    axes[0].set_ylabel("Parameters")
-    axes[0].bar_label(axes[0].containers[0], labels=[f"{v:,}" for v in params], padding=2, fontsize=6)
-    axes[0].grid(axis="y", alpha=0.25)
+    ax_params.bar(scope_labels, params, color=["#8F8F8F", "#F58518", "#E45756"], width=0.65)
+    ax_params.set_title("Encrypted parameters")
+    ax_params.set_ylabel("Parameters")
+    ax_params.bar_label(ax_params.containers[0], labels=[f"{v:,}" for v in params], padding=2, fontsize=6)
+    ax_params.grid(axis="y", alpha=0.25)
 
-    axes[1].bar(scope_labels, chunks, color=["#8F8F8F", "#F58518", "#E45756"])
-    axes[1].set_title("CKKS chunks")
-    axes[1].set_ylabel("Chunks")
-    axes[1].bar_label(axes[1].containers[0], labels=[str(v) for v in chunks], padding=2, fontsize=6)
-    axes[1].set_ylim(0, max(chunks) + 2)
-    axes[1].grid(axis="y", alpha=0.25)
+    ax_chunks.bar(scope_labels, chunks, color=["#8F8F8F", "#F58518", "#E45756"], width=0.65)
+    ax_chunks.set_title("CKKS chunks")
+    ax_chunks.set_ylabel("Chunks")
+    ax_chunks.bar_label(ax_chunks.containers[0], labels=[str(v) for v in chunks], padding=2, fontsize=6)
+    ax_chunks.set_ylim(0, max(chunks) + 2)
+    ax_chunks.grid(axis="y", alpha=0.25)
 
-    if timing_rows:
-        ax = axes[2]
-        x = np.arange(len(timing_rows))
+    if ax_time is not None:
+        y = np.arange(len(timing_rows))
         enc = np.array([row["enc"] for row in timing_rows])
         agg = np.array([row["agg"] for row in timing_rows])
         dec = np.array([row["dec"] for row in timing_rows])
-        ax.bar(x, enc, label="Encrypt", color="#4C78A8")
-        ax.bar(x, agg, bottom=enc, label="Aggregate", color="#72B7B2")
-        ax.bar(x, dec, bottom=enc + agg, label="Decrypt", color="#F58518")
-        ax.set_xticks(x)
-        ax.set_xticklabels([row["label"] for row in timing_rows], rotation=30, ha="right")
-        ax.set_title("Avg CKKS time / round")
-        ax.set_ylabel("Seconds")
-        ax.grid(axis="y", alpha=0.25)
-        ax.legend(frameon=False, fontsize=6)
+        ax_time.barh(y, enc, label="Encrypt", color="#4C78A8")
+        ax_time.barh(y, agg, left=enc, label="Aggregate", color="#72B7B2")
+        ax_time.barh(y, dec, left=enc + agg, label="Decrypt", color="#F58518")
+        ax_time.set_yticks(y)
+        ax_time.set_yticklabels([row["label"].replace("\n", " ") for row in timing_rows])
+        ax_time.invert_yaxis()
+        ax_time.set_title("Average CKKS time per round")
+        ax_time.set_xlabel("Seconds")
+        ax_time.grid(axis="x", alpha=0.25)
+        ax_time.legend(frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.18), fontsize=6)
 
-    fig.suptitle("Selected-layer CKKS scope and measured overhead", y=1.05)
-    fig.tight_layout()
     save_figure(fig, "fig_ckks_scope_overhead")
 
 

@@ -1,0 +1,33 @@
+{
+  "tenseal_available": true,
+  "mode": "chunked",
+  "vector_length": 16149,
+  "num_clients": 3,
+  "sample_counts": [
+    504,
+    483,
+    483
+  ],
+  "weights": [
+    0.34285714285714286,
+    0.32857142857142857,
+    0.32857142857142857
+  ],
+  "poly_modulus_degree": 8192,
+  "coeff_mod_bit_sizes": [
+    60,
+    40,
+    40,
+    60
+  ],
+  "global_scale_exponent": 40,
+  "global_scale": 1099511627776.0,
+  "chunked": true,
+  "chunk_size": 4096,
+  "num_chunks": 4,
+  "encryption_time_seconds": 0.037270499975420535,
+  "aggregation_time_seconds": 0.00655459996778518,
+  "decryption_time_seconds": 0.0033230000408366323,
+  "max_absolute_error": 3.517350347093107e-08,
+  "mean_absolute_error": 5.764463362432414e-09
+}

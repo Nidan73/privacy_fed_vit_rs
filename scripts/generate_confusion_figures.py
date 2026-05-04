@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,8 +19,10 @@ METRICS_DIR = ROOT / "results" / "metrics"
 SPLITS_DIR = ROOT / "data" / "splits"
 RAW_DIR = ROOT / "data" / "raw"
 FIGURE_DIR = ROOT / "papers" / "draft" / "figures"
+ACM_FIGURE_DIR = ROOT / "figures"
 
 PNG_DPI = 300
+ACM_COUNT_FIGSIZE = (10.0, 9.2)
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,11 @@ EXPERIMENTS = [
         / "N2D01_fedavg_dirichlet01_vit_base_nwpu_20r1e_lr5e5_aug_ls_cosine_s42_confusion_matrix.csv",
     ),
 ]
+
+ACM_COUNT_TITLES = {
+    "n2d01": "N2D01 Plain FedAvg Confusion Matrix",
+    "n4d01hn": "N4D01HN Head+Norm CKKS Confusion Matrix",
+}
 
 
 plt.rcParams.update(
@@ -87,6 +95,7 @@ SHORT_LABELS = {
 generated_files: list[Path] = []
 skipped: list[tuple[str, str]] = []
 sources_used: list[Path] = []
+heatmap_backend = "matplotlib imshow"
 
 
 def save_figure(fig: plt.Figure, stem: str) -> None:
@@ -97,6 +106,16 @@ def save_figure(fig: plt.Figure, stem: str) -> None:
         generated_files.append(path)
         print(f"generated: {path}")
     plt.close(fig)
+
+
+def save_acm_png(fig: plt.Figure, filename: str) -> Path:
+    ACM_FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+    path = ACM_FIGURE_DIR / filename
+    fig.savefig(path, dpi=PNG_DPI, bbox_inches="tight", pad_inches=0.06)
+    generated_files.append(path)
+    print(f"generated: {path}")
+    plt.close(fig)
+    return path
 
 
 def skip(stem: str, reason: str) -> None:
@@ -161,6 +180,43 @@ def row_normalize(values: np.ndarray) -> np.ndarray:
     return np.divide(values, row_sums, out=np.zeros_like(values), where=row_sums != 0) * 100.0
 
 
+def confusion_summary(values: np.ndarray) -> dict[str, float]:
+    """Compute macro and micro summaries directly from a multiclass confusion matrix."""
+    true_counts = values.sum(axis=1)
+    predicted_counts = values.sum(axis=0)
+    true_positive = np.diag(values)
+
+    per_class_recall = np.divide(
+        true_positive,
+        true_counts,
+        out=np.zeros_like(true_positive, dtype=float),
+        where=true_counts != 0,
+    )
+    per_class_precision = np.divide(
+        true_positive,
+        predicted_counts,
+        out=np.zeros_like(true_positive, dtype=float),
+        where=predicted_counts != 0,
+    )
+    per_class_f1 = np.divide(
+        2.0 * per_class_precision * per_class_recall,
+        per_class_precision + per_class_recall,
+        out=np.zeros_like(true_positive, dtype=float),
+        where=(per_class_precision + per_class_recall) != 0,
+    )
+
+    total = float(values.sum())
+    micro_accuracy = float(true_positive.sum() / total) if total else 0.0
+    return {
+        "macro_precision": float(per_class_precision.mean()),
+        "macro_recall": float(per_class_recall.mean()),
+        "macro_f1": float(per_class_f1.mean()),
+        # For single-label multiclass classification, micro precision/recall/F1 reduce
+        # to global accuracy because each sample contributes exactly one prediction.
+        "micro_accuracy": micro_accuracy,
+    }
+
+
 def configure_matrix_axes(ax: plt.Axes, class_order: list[str]) -> None:
     labels = [short_label(class_name) for class_name in class_order]
     positions = np.arange(len(class_order))
@@ -175,6 +231,24 @@ def configure_matrix_axes(ax: plt.Axes, class_order: list[str]) -> None:
     ax.set_xticks(np.arange(-0.5, len(class_order), 1), minor=True)
     ax.set_yticks(np.arange(-0.5, len(class_order), 1), minor=True)
     ax.grid(which="minor", color="white", linewidth=0.45)
+    ax.tick_params(which="minor", bottom=False, left=False)
+    ax.set_aspect("equal")
+
+
+def configure_acm_matrix_axes(ax: plt.Axes, class_order: list[str]) -> None:
+    labels = [short_label(class_name) for class_name in class_order]
+    positions = np.arange(len(class_order))
+    ax.set_xticks(positions)
+    ax.set_yticks(positions)
+    ax.set_xticklabels(labels, rotation=90, ha="center", va="top", fontsize=5.8)
+    ax.set_yticklabels(labels, rotation=0, fontsize=5.8)
+    ax.tick_params(axis="both", length=0, pad=1.6)
+    ax.set_xlabel("Predicted class", labelpad=8, fontsize=8.2)
+    ax.set_ylabel("True class", labelpad=8, fontsize=8.2)
+
+    ax.set_xticks(np.arange(-0.5, len(class_order), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(class_order), 1), minor=True)
+    ax.grid(which="minor", color="white", linewidth=0.28, alpha=0.85)
     ax.tick_params(which="minor", bottom=False, left=False)
     ax.set_aspect("equal")
 
@@ -198,6 +272,22 @@ def annotate_count_off_diagonal(ax: plt.Axes, values: np.ndarray, threshold: int
             if value < threshold:
                 continue
             ax.text(j, i, str(value), ha="center", va="center", fontsize=6.8, color="#202020")
+
+
+def annotate_acm_count_cells(ax: plt.Axes, values: np.ndarray, off_diagonal_threshold: int = 15) -> None:
+    n_rows, n_cols = values.shape
+    for i in range(n_rows):
+        for j in range(n_cols):
+            value = int(round(values[i, j]))
+            if value <= 0:
+                continue
+            is_diagonal = i == j
+            if not is_diagonal and value < off_diagonal_threshold:
+                continue
+
+            color = "white" if is_diagonal or value >= 150 else "#202020"
+            fontsize = 4.8 if is_diagonal else 4.4
+            ax.text(j, i, str(value), ha="center", va="center", fontsize=fontsize, color=color)
 
 
 def plot_normalized_matrix(values: np.ndarray, class_order: list[str], spec: ExperimentSpec) -> None:
@@ -237,6 +327,55 @@ def plot_count_matrix(values: np.ndarray, class_order: list[str], spec: Experime
 
     fig.tight_layout()
     save_figure(fig, f"fig_confusion_matrix_{spec.slug}_counts")
+
+
+def plot_acm_count_matrix(
+    values: np.ndarray,
+    class_order: list[str],
+    spec: ExperimentSpec,
+    *,
+    common_vmax: float,
+) -> None:
+    title = ACM_COUNT_TITLES[spec.slug]
+    fig, ax = plt.subplots(figsize=ACM_COUNT_FIGSIZE)
+    image = ax.imshow(
+        values,
+        cmap="YlGnBu",
+        norm=PowerNorm(gamma=0.42, vmin=0, vmax=max(1.0, common_vmax)),
+        interpolation="nearest",
+    )
+    configure_acm_matrix_axes(ax, class_order)
+    annotate_acm_count_cells(ax, values, off_diagonal_threshold=15)
+    ax.set_title(title, pad=10, fontsize=10.5, weight="semibold")
+
+    cbar = fig.colorbar(image, ax=ax, fraction=0.028, pad=0.018)
+    cbar.set_label("Test images", fontsize=7.6)
+    cbar.ax.tick_params(labelsize=6.5)
+
+    fig.tight_layout(pad=0.4)
+    save_acm_png(fig, f"fig_confusion_matrix_{spec.slug}_counts.png")
+
+
+def generate_acm_count_pair() -> None:
+    loaded: list[tuple[ExperimentSpec, pd.DataFrame, list[str]]] = []
+    for spec in sorted(EXPERIMENTS, key=lambda item: item.slug):
+        if spec.slug not in ACM_COUNT_TITLES:
+            continue
+        try:
+            cm, class_order = load_confusion_matrix(spec.confusion_csv)
+        except (FileNotFoundError, ValueError) as exc:
+            skip(f"fig_confusion_matrix_{spec.slug}_counts.png", str(exc))
+            continue
+        loaded.append((spec, cm, class_order))
+
+    if not loaded:
+        return
+
+    common_vmax = max(float(cm.to_numpy(dtype=float).max()) for _, cm, _ in loaded)
+    print(f"shared_count_color_scale_vmax: {common_vmax:.0f}")
+    for spec, cm, class_order in loaded:
+        values = cm.to_numpy(dtype=float)
+        plot_acm_count_matrix(values, class_order, spec, common_vmax=common_vmax)
 
 
 def top_confusion_pairs(values: np.ndarray, class_order: list[str], top_k: int = 15) -> pd.DataFrame:
@@ -323,11 +462,17 @@ def generate_for_experiment(spec: ExperimentSpec) -> None:
         return
 
     values = cm.to_numpy(dtype=float)
+    summary = confusion_summary(values)
     print(f"\nexperiment: {spec.experiment_id}")
     print(f"source_confusion_matrix: {spec.confusion_csv}")
+    print(f"heatmap_backend: {heatmap_backend}")
     print(f"class_count: {len(class_order)}")
     print(f"test_samples: {int(values.sum())}")
     print(f"diagonal_correct: {int(np.trace(values))}")
+    print(f"micro_accuracy: {summary['micro_accuracy'] * 100.0:.2f}%")
+    print(f"macro_precision: {summary['macro_precision'] * 100.0:.2f}%")
+    print(f"macro_recall: {summary['macro_recall'] * 100.0:.2f}%")
+    print(f"macro_f1: {summary['macro_f1'] * 100.0:.2f}%")
 
     plot_normalized_matrix(values, class_order, spec)
     plot_count_matrix(values, class_order, spec)
@@ -335,10 +480,42 @@ def generate_for_experiment(spec: ExperimentSpec) -> None:
     plot_per_class_recall(values, class_order, spec)
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate paper confusion-matrix figures from saved CSV artifacts.")
+    parser.add_argument(
+        "--mode",
+        choices=("all", "acm_counts"),
+        default="all",
+        help="Use acm_counts to generate only the two full-width ACM count heatmaps in figures/.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    if args.mode == "acm_counts":
+        print(f"output_dir: {ACM_FIGURE_DIR}")
+        generate_acm_count_pair()
+        print("\nSummary")
+        print("=======")
+        print("source artifacts:")
+        for path in sources_used:
+            print(f"- {path}")
+        print(f"\ngenerated files: {len(generated_files)}")
+        for path in generated_files:
+            print(f"- {path}")
+        if skipped:
+            print("\nSkipped:")
+            for stem, reason in skipped:
+                print(f"- {stem}: {reason}")
+        else:
+            print("\nSkipped: none")
+        return
+
     print(f"output_dir: {FIGURE_DIR}")
     for spec in EXPERIMENTS:
         generate_for_experiment(spec)
+    generate_acm_count_pair()
 
     print("\nSummary")
     print("=======")

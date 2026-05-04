@@ -1,0 +1,33 @@
+{
+  "experiment_id": "A0_centralized_vit_base_10ep",
+  "dry_run": false,
+  "model_name": "vit_base_patch16_224",
+  "dataset": "UCMerced Land Use",
+  "num_classes": 21,
+  "model_parameter_count": 85814805,
+  "device": "cuda",
+  "cuda_available": true,
+  "amp_enabled": true,
+  "epochs": 10,
+  "actual_epochs_ran": 10,
+  "batch_size": 16,
+  "learning_rate": 0.0001,
+  "weight_decay": 0.0001,
+  "best_epoch": 7,
+  "best_val_accuracy": 0.9873015873015873,
+  "final_train_accuracy": 0.964625850340136,
+  "final_val_accuracy": 0.9365079365079365,
+  "test_accuracy": 0.9619047619047619,
+  "test_macro_f1": 0.9617393601860471,
+  "test_weighted_f1": 0.9617393601860469,
+  "total_training_time_seconds": 72.20617449993733,
+  "training_time_sec": 72.20617449993733,
+  "epoch_log_path": "E:\\VIT-FL\\privacy_fed_vit_rs\\results\\logs\\A0_centralized_vit_base_10ep_epoch_log.csv",
+  "checkpoint_path": "E:\\VIT-FL\\privacy_fed_vit_rs\\experiments\\centralized\\A0_centralized_vit_base_10ep\\checkpoints\\best.pt",
+  "test_metrics": {
+    "loss": 0.1274785726789444,
+    "accuracy": 0.9619047619047619,
+    "macro_f1": 0.9617393601860471,
+    "weighted_f1": 0.9617393601860469
+  }
+}

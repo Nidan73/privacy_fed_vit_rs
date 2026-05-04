@@ -1,0 +1,38 @@
+{
+  "client_sample_counts": {
+    "client_0": 1654,
+    "client_1": 2499,
+    "client_2": 2147
+  },
+  "classes_per_client": {
+    "client_0": 42,
+    "client_1": 40,
+    "client_2": 39
+  },
+  "min_samples_per_class_per_client": {
+    "client_0": 0,
+    "client_1": 0,
+    "client_2": 0
+  },
+  "max_samples_per_class_per_client": {
+    "client_0": 113,
+    "client_1": 139,
+    "client_2": 138
+  },
+  "zero_class_entries_per_client": {
+    "client_0": 3,
+    "client_1": 5,
+    "client_2": 6
+  },
+  "total_train_rows": 6300,
+  "total_client_rows": 6300,
+  "unique_client_paths": 6300,
+  "total_train_coverage": 6300,
+  "duplicate_count": 0,
+  "overlap_between_clients": 0,
+  "missing_train_count": 0,
+  "extra_not_train_count": 0,
+  "covers_train_exactly_once": true,
+  "val_images_in_clients": 0,
+  "test_images_in_clients": 0
+}
